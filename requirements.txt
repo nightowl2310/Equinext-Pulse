@@ -1,0 +1,15 @@
+# Core dependencies for nse_oi_scraper.py
+# Install everything with:  pip install -r requirements.txt
+
+requests          # makes the HTTP requests
+cloudscraper      # fallback that gets past Akamai bot protection when requests gets 403
+
+# The database (--load-all, --no-db, auto-update) needs NOTHING extra:
+# it uses Python's built-in sqlite3 + csv modules.
+
+# Optional -- only needed for the "--merge" and "--export-excel" features.
+# Uncomment these (or run: pip install pandas openpyxl) to enable them.
+#   pandas    -> used by --merge and --export-excel
+#   openpyxl  -> lets pandas write .xlsx files (needed for --export-excel)
+# pandas
+# openpyxl

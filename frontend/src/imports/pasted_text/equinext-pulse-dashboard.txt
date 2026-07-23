@@ -1,0 +1,142 @@
+Design a single-screen web dashboard in Figma. You have NO prior context, so
+everything you need is below. Produce ONE high-fidelity desktop frame (1440px
+wide), ONE page, minimal components/layers, no extra screens or flows.
+
+=== WHAT THIS IS ===
+"Equinext Pulse" is one page of a larger stock-market intelligence site called
+Equinext, for Indian retail investors. This page shows NSE "Participant-wise
+Open Interest" — i.e. how the big players in the F&O (futures & options) market
+are positioned. The four players ("actors") are:
+  Pro    = proprietary trading desks (the sharpest, fastest money)
+  FII    = Foreign Institutional Investors (big foreign money)
+  DII    = Domestic Institutional Investors (Indian funds)
+  Client = retail crowd
+Every morning at 8 AM the page shows what changed in their positions, so an
+investor knows the lay of the land before markets open.
+
+=== BRAND / TONE ===
+Trustworthy fintech, calm and premium — like a morning briefing you read at your
+desk. Default theme: LIGHT — off-white canvas (#F7F6F2), dark-ink navbar
+(#12151C), one signature accent (teal #0EA5A4 or amber — pick one). Numbers:
+green (#158A4E) for increases (+), red (#C0362C) for decreases (-). Type: a
+refined SERIF for the big headline (editorial feel); a clean SANS with TABULAR
+figures for all tables so numbers align. Keep it themeable (a dark variant
+should be trivial to swap).
+
+=== SCREEN STRUCTURE (top to bottom) ===
+1) NAVBAR (dark ink, full width). Left: wordmark "Equinext Pulse". Then nav
+   items as tabs — NOT a dropdown menu:
+     - "Open Interest"  -> ACTIVE (accent underline/highlight)
+     - "FII / DII Flows"   -> disabled, small "Soon" pill
+     - "Option Chain"      -> disabled, small "Soon" pill
+     - "Delivery Data"     -> disabled, small "Soon" pill
+   (These future items are greyed/non-clickable.)
+
+2) HERO. Big serif headline: "Everything you need to know before you invest —
+   on your desk by 8 AM." A muted subline: "NSE participant positioning,
+   refreshed every trading morning." A small timestamp chip on the right:
+   "As of 8:00 AM IST · 15 Jul 2026".
+
+3) SUB-SELECTOR (segmented control, 3 tabs): Daily | Weekly | Monthly.
+   DEFAULT = Daily (selected). Show the Daily content as the visible state;
+   include Weekly and Monthly as two additional visual states/frames-in-place
+   (or a second and third copy of the content area) so all three can be seen.
+
+4) BRIEF CONTENT AREA (this is the core — reproduce the layout below).
+
+=== BRIEF CONTENT LAYOUT (applies to each sub-selector) ===
+Top of the content:
+  - A "context bar": the two dates being compared, e.g.
+      Daily:   "15 Jul 2026 (Wed)  vs  14 Jul 2026 (Tue)"
+      Weekly:  "15 Jul 2026 (Wed)  vs  09 Jul 2026 (Thu · expiry)"
+      Monthly: "15 Jul 2026 (Wed)  vs  25 Jun 2026 (Thu · expiry)"
+  - A HEADLINE CARD (hero of the brief): the single biggest move, big and bold,
+    e.g. "Pro added index call longs  +163,663 contracts (+22.8%)".
+  - A small muted note chip when relevant, e.g.
+    "Client hidden — biggest move only 1.0x their typical (needs 1.5x)".
+
+Then ACTOR CARDS (one card per actor shown, stacked). Each card:
+  - Actor name as the card title (e.g. "Pro") + a one-line "book" summary shown
+    as two chips:  Long +324,935 (+7.0%)   |   Short +292,822 (+6.8%).
+  - A compact TABLE of that actor's biggest moves, columns:
+       Field  |  Old -> New  |  Change (abs)  |  %  |  Note
+    Color the Change and % green(+)/red(-). Right-align numbers, tabular figures.
+    The "Note" is a short plain phrase (e.g. "adding index call longs").
+  - Cards for actors marked "(shown for coverage)" get a tiny subtle label.
+
+Then a RIGHT-HAND or bottom "READ" PANEL:
+  - A horizontal GAUGE from -1 (Bearish, red) .. 0 (Neutral) .. +1 (Bullish,
+    green) with a needle at the score. Label the tilt (e.g. "NEUTRAL tilt,
+    score -0.04").
+  - 3 signal bullets, each with a green "bullish" or red "bearish" chip, e.g.
+    "Pro adding index call longs +163,663  [bullish]".
+  - An "Action" one-liner (plain text).
+  - A tiny disclaimer: "Positioning read only — not investment advice."
+
+Bottom of content:
+  - A "TOTAL (context)" strip, e.g. "Total Long Contracts +1,399,677
+    (20,810,416 -> 22,210,093)".
+  - A muted footnote: "Moves selected by absolute change (size); % shown
+    alongside as context — OI is quantity-driven."
+
+=== REAL SAMPLE DATA (use these exact values so it looks live) ===
+
+# DAILY (default)  — 15 Jul (Wed) vs 14 Jul (Tue)
+HEADLINE: Pro added index call longs +163,663 (+22.8%)
+NOTE: Client hidden — biggest move 933,376 is 1.0x typical 930,474 (needs 1.5x)
+Pro   book: Long +324,935 (+7.0%) | Short +292,822 (+6.8%)
+   Option Index Call Long   716,728 -> 880,391  +163,663  +22.8%  adding index call longs
+   Option Index Call Short  668,925 -> 768,480  +99,555   +14.9%  adding index call shorts
+   Option Index Put Long    723,668 -> 801,196  +77,528   +10.7%  adding index put longs
+FII   book: Long +117,153 (+2.1%) | Short +195,474 (+3.9%)
+   Option Index Call Short  604,801 -> 684,037  +79,236   +13.1%  adding index call shorts
+   Option Index Put Long    815,790 -> 894,399  +78,609   +9.6%   adding index put longs
+   Option Index Put Short   317,466 -> 393,471  +76,005   +23.9%  adding index put shorts
+DII (shown for coverage)  book: Long +24,213 (+4.7%) | Short +1,487 (0.0%)
+   Future Stock Long        356,748 -> 379,348  +22,600   +6.3%   adding stock futures longs
+TOTAL: Total Long Contracts +1,399,677 (20,810,416 -> 22,210,093)
+READ: NEUTRAL tilt (-0.04). Pro adding index call longs +163,663 [bullish];
+   FII adding index call shorts +79,236 [bearish]; FII adding index put longs
+   +78,609 [bearish]. Action: no clear lean; strongest signal Pro +163,663 calls.
+
+# WEEKLY  — 15 Jul (Wed) vs 09 Jul (Thu · expiry)
+HEADLINE: Pro added stock call shorts +276,701 (+20.4%)
+NOTE: Client hidden — biggest move 408,751 is 0.5x typical 836,764 (needs 1.5x)
+Pro   book: Long +238,081 (+5.0%) | Short +329,522 (+7.7%)
+   Option Stock Call Short  1,355,526 -> 1,632,227  +276,701  +20.4%  adding stock call shorts
+   Option Stock Call Long     987,339 -> 1,115,287  +127,948  +13.0%  adding stock call longs
+   Option Stock Put Long    1,013,607 -> 1,136,413  +122,806  +12.1%  adding stock put longs
+   Option Stock Put Short     838,534 ->   956,146  +117,612  +14.0%  adding stock put shorts
+   Future Stock Short         426,159 ->   537,265  +111,106  +26.1%  adding stock futures shorts
+   Option Index Put Short     793,645 ->   683,589  -110,056  -13.9%  trimming index put shorts
+FII (shown for coverage)  book: Long -5,611 (-0.1%) | Short +75,055 (+1.4%)
+   Option Stock Call Short    321,635 ->   402,141   +80,506  +25.0%  adding stock call shorts
+DII (shown for coverage)  book: Long +84,215 (+18.6%) | Short +68,012 (+1.5%)
+   Future Stock Long          301,278 ->   379,348   +78,070  +25.9%  adding stock futures longs
+TOTAL: Option Stock Call Long +586,706 (3,157,884 -> 3,744,590)
+READ: NEUTRAL tilt (+0.17). FII trimming index call shorts -68,577 [bullish];
+   Pro trimming index put shorts -110,056 [bearish]; Pro trimming index put
+   longs -85,504 [bullish]. Action: no clear lean; strongest FII -68,577.
+
+# MONTHLY  — 15 Jul (Wed) vs 25 Jun (Thu · expiry)
+HEADLINE: FII trimmed stock futures longs -301,729 (-7.4%)
+NOTE: Client hidden — biggest move 1,384,311 is 0.8x typical 1,811,190 (needs 1.5x)
+FII   book: Long -1,022,476 (-15.0%) | Short -783,062 (-13.0%)
+   Future Stock Long        4,072,069 -> 3,770,340  -301,729  -7.4%   trimming stock futures longs
+   Option Index Put Long    1,184,577 ->   894,399  -290,178  -24.5%  trimming index put longs
+   Option Index Call Short    915,781 ->   684,037  -231,744  -25.3%  trimming index call shorts
+Pro   book: Long -677,570 (-12.0%) | Short -722,135 (-13.6%)
+   Option Stock Call Long   1,380,812 -> 1,115,287  -265,525  -19.2%  trimming stock call longs
+   Option Stock Call Short  1,863,590 -> 1,632,227  -231,363  -12.4%  trimming stock call shorts
+DII   book: Long -62,603 (-10.5%) | Short -237,677 (-4.8%)
+   Future Stock Short       4,468,679 -> 4,242,463  -226,216  -5.1%   trimming stock futures shorts
+TOTAL: Total Long Contracts -3,127,186 (25,337,279 -> 22,210,093)
+READ: NEUTRAL tilt (+0.07). FII trimming index put longs -290,178 [bullish];
+   FII trimming index call shorts -231,744 [bullish]; FII trimming index call
+   longs -201,226 [bearish]. Action: no clear lean; strongest FII -290,178.
+
+=== CONSTRAINTS (important) ===
+- ONE desktop frame, ONE page. No hamburger/side menu, no modals, no extra pages.
+- Keep it lean: reuse a single "Actor Card" component and a single "data row"
+  component; don't over-build. Minimal layers.
+- Make it look production-ready and readable, not a wireframe.

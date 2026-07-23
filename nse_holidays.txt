@@ -1,0 +1,58 @@
+# NSE trading holidays -- one date per line, format YYYY-MM-DD.
+# Blank lines, and anything after a '#', are ignored.
+#
+# ------------------------------------------------------------------------
+# WHY THIS FILE MATTERS (it does two jobs now)
+# ------------------------------------------------------------------------
+# 1. The scraper skips these days instead of asking NSE for a file that
+#    doesn't exist.
+# 2. analysis.py uses it to work out the REAL F&O expiry date. Expiry is
+#    normally Thursday, but if that Thursday is a holiday the expiry moves
+#    to the previous trading day -- so a wrong holiday here means a wrong
+#    expiry comparison.
+#
+# ------------------------------------------------------------------------
+# HOW THESE DATES WERE CONFIRMED
+# ------------------------------------------------------------------------
+# Dates marked "[confirmed]" are proven by the downloaded data itself: NSE
+# published no participant-OI file that weekday, so no trading happened.
+# That is stronger evidence than any published list, and it already caught
+# three of my earlier guesses being wrong (Mar 4, May 27 and Jun 25 are all
+# real TRADING days -- they must never be listed here).
+#
+# Dates without "[confirmed]" are fixed-date national holidays that fall
+# outside the data we've downloaded so far. They're safe (same date every
+# year) but will be confirmed automatically as the archive grows.
+#
+# Adding a date you're unsure about is the ONE dangerous edit: it makes the
+# scraper skip a real trading day. Leaving a holiday OUT is harmless -- the
+# download just returns a 404 and is logged as a non-trading day. So when in
+# doubt, leave it out.
+#
+# Official list (to check future dates):
+#   https://www.nseindia.com/resources/exchange-communication-holidays
+# ------------------------------------------------------------------------
+
+# --- 2026, confirmed from the downloaded archive (2026-01-16 .. 2026-07-15) ---
+# The festival names are my best guess; only the DATES are confirmed.
+2026-01-26   # [confirmed] Republic Day
+2026-03-03   # [confirmed] Holi
+2026-03-26   # [confirmed] Ram Navami / Eid  <- a THURSDAY: that week's expiry moved to Wed 2026-03-25
+2026-03-31   # [confirmed] Mahavir Jayanti
+2026-04-03   # [confirmed] Good Friday
+2026-04-14   # [confirmed] Dr. Baba Saheb Ambedkar Jayanti
+2026-05-01   # [confirmed] Maharashtra Day
+2026-05-28   # [confirmed] Bakri Id          <- a THURSDAY: that week's expiry moved to Wed 2026-05-27
+2026-06-26   # [confirmed] Muharram
+
+# --- 2026, fixed-date national holidays not yet covered by the archive ---
+# (Same date every year, so these are safe to declare in advance.)
+2026-08-15   # Independence Day
+2026-10-02   # Mahatma Gandhi Jayanti
+2026-12-25   # Christmas
+
+# --- Not yet known: later-2026 movable holidays (Dussehra, Diwali, Guru Nanak
+#     Jayanti, etc.). Leave them out until either the archive confirms them or
+#     you copy them from the official NSE list above. Run
+#     `python analysis.py --check-calendar` any time to see whether this file
+#     still agrees with the downloaded data.
