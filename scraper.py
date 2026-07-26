@@ -192,6 +192,27 @@ def resolve_range(conn, start: date, end: date):
     return (start or lo), (end or hi)
 
 
+def refresh(conn, index: str = "NIFTY 50", start=None, end=None, timeout: float = 30.0):
+    """Fetch <index> daily prices over the OI span (defaults) and store them in
+    index_prices on an ALREADY-OPEN connection. Returns (inserted, skipped).
+
+    Used by the daily OI job: call it AFTER the day's OI is loaded (so the OI
+    table's max date = today, and the default range therefore reaches today) and
+    BEFORE the participants-vs-NIFTY JSON is rebuilt, so the overlay has today's
+    close the same night. No matplotlib, no argparse — just the fetch + store."""
+    ticker = INDEX_TICKERS[index]
+    s, e = resolve_range(conn, start, end)
+    if s > e:
+        raise ValueError(f"start ({s}) is after end ({e}).")
+    result = fetch_chart(ticker, s, e, timeout=timeout)
+    rows = parse_chart(result, index, ticker)
+    ss, ee = s.isoformat(), e.isoformat()
+    rows = [r for r in rows if ss <= r[0] <= ee]
+    if not rows:
+        return 0, 0
+    return db_loader.store_index_prices(conn, rows)
+
+
 def report_alignment(conn, symbol: str) -> None:
     """Cross-check the stored prices against the OI trading days, both ways, so a
     silently mis-aligned overlay (a session in one table but not the other) shows

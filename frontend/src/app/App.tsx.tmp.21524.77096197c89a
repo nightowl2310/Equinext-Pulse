@@ -196,7 +196,7 @@ function ActorCard({ actor }: { actor: Actor }) {
           </span>
           {actor.coverage && (
             <span
-              className="text-xs uppercase tracking-widest border border-border rounded px-1.5 py-0.5"
+              className="text-[10px] uppercase tracking-widest border border-border rounded px-1.5 py-0.5"
               style={{ color: "#9E9A92" }}
             >
               coverage
@@ -277,7 +277,7 @@ function ReadPanel({ data }: { data: BriefData }) {
         style={{ background: "#FFFFFF" }}
       >
         <p
-          className="text-xs uppercase tracking-widest mb-3"
+          className="text-[10px] uppercase tracking-widest mb-3"
           style={{ color: "#9E9A92" }}
         >
           Market Read
@@ -298,7 +298,7 @@ function ReadPanel({ data }: { data: BriefData }) {
           </span>
         </div>
         <p
-          className="text-xs text-center mt-1"
+          className="text-[10px] text-center mt-1"
           style={{ color: "#B0AB9E", fontFamily: "'DM Mono', monospace" }}
         >
           −1 bearish · 0 neutral · +1 bullish
@@ -311,7 +311,7 @@ function ReadPanel({ data }: { data: BriefData }) {
         style={{ background: "#FFFFFF" }}
       >
         <p
-          className="text-xs uppercase tracking-widest"
+          className="text-[10px] uppercase tracking-widest"
           style={{ color: "#9E9A92" }}
         >
           Signals
@@ -319,7 +319,7 @@ function ReadPanel({ data }: { data: BriefData }) {
         {read.signals.map((s, i) => (
           <div key={i} className="flex items-start gap-2.5">
             <span
-              className="shrink-0 text-xs uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded mt-0.5"
+              className="shrink-0 text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded mt-0.5"
               style={{
                 background: s.sentiment === "bullish" ? "#EBF6EF" : "#FBEEEC",
                 color: s.sentiment === "bullish" ? GREEN : RED,
@@ -346,7 +346,7 @@ function ReadPanel({ data }: { data: BriefData }) {
         style={{ background: "#FFFFFF" }}
       >
         <p
-          className="text-xs uppercase tracking-widest mb-2"
+          className="text-[10px] uppercase tracking-widest mb-2"
           style={{ color: "#9E9A92" }}
         >
           Action
@@ -355,7 +355,7 @@ function ReadPanel({ data }: { data: BriefData }) {
           {data.action}
         </p>
         <p
-          className="text-xs mt-3 pt-3 border-t border-border"
+          className="text-[11px] mt-3 pt-3 border-t border-border"
           style={{ color: "#B0AB9E" }}
         >
           {data.disclaimer}
@@ -420,14 +420,6 @@ interface ParticipantSeries {
   futures: (number | null)[];
   calls: (number | null)[];
   puts: (number | null)[];
-  // gross legs (always ≥ 0) — the "Long book" / "Short book" modes plot these in
-  // the same three instrument panels instead of the nets above.
-  futuresLong: (number | null)[];
-  futuresShort: (number | null)[];
-  callsLong: (number | null)[];
-  callsShort: (number | null)[];
-  putsLong: (number | null)[];
-  putsShort: (number | null)[];
   longBook: (number | null)[];
   shortBook: (number | null)[];
   longBookDelta: (number | null)[];
@@ -454,123 +446,23 @@ const PV_COLORS: Record<string, string> = {
   Client: "#C0362C", // red
   Pro: "#158A4E", // green
 };
-// The chart's three instrument panels (the top NIFTY panel is handled separately)
-// are MODE-DRIVEN: the same three panels swap which series they plot.
-//   main      → the nets (long − short), which straddle zero
-//   longBook  → the gross long leg of each instrument
-//   shortBook → the gross short leg of each instrument
-// Gross legs are strictly positive and an order of magnitude larger than the
-// nets, so the zero line / zero clamp only applies in "main" (see `scales`).
-type BookMode = "main" | "longBook" | "shortBook";
-const PV_MODES: { key: BookMode; label: string }[] = [
-  { key: "main", label: "Main" },
-  { key: "longBook", label: "Long Book" },
-  { key: "shortBook", label: "Short Book" },
+// The three instrument panels (top NIFTY panel is handled separately).
+const PV_INSTRUMENTS: { key: keyof ParticipantSeries; label: string }[] = [
+  { key: "futures", label: "Net index futures" },
+  { key: "calls", label: "Net index calls" },
+  { key: "puts", label: "Net index puts" },
 ];
-type PvInstrument = { key: keyof ParticipantSeries; label: string; chip: string };
-const PV_INSTRUMENTS: Record<BookMode, PvInstrument[]> = {
-  main: [
-    { key: "futures", label: "Net index futures", chip: "Fut" },
-    { key: "calls", label: "Net index calls", chip: "Call" },
-    { key: "puts", label: "Net index puts", chip: "Put" },
-  ],
-  longBook: [
-    { key: "futuresLong", label: "Index futures — long", chip: "Fut L" },
-    { key: "callsLong", label: "Index calls — long", chip: "Call L" },
-    { key: "putsLong", label: "Index puts — long", chip: "Put L" },
-  ],
-  shortBook: [
-    { key: "futuresShort", label: "Index futures — short", chip: "Fut S" },
-    { key: "callsShort", label: "Index calls — short", chip: "Call S" },
-    { key: "putsShort", label: "Index puts — short", chip: "Put S" },
-  ],
-};
 
-// ── Time-range filter (§4 + §5) ──────────────────────────────────────────────
-// The archive runs to ~2,600 trading days, so the chart must be handed a SLICE,
-// never the whole file with the excess hidden at render time. Ranges are
-// calendar-relative to the LAST date in the file (trading days per month vary),
-// so we compute a cutoff date and find the first index at or after it.
-type RangeKey = "1M" | "6M" | "1Y" | "3Y" | "ALL";
-const PV_RANGES: { key: RangeKey; label: string; months: number | null }[] = [
-  { key: "1M", label: "1M", months: 1 },
-  { key: "6M", label: "6M", months: 6 },
-  { key: "1Y", label: "1Y", months: 12 },
-  { key: "3Y", label: "3Y", months: 36 },
-  { key: "ALL", label: "All", months: null },
+// The extra, selector-driven book panel appended below the three net panels.
+// longBook  = fut long  + call long  − put short  (bullish exposure)
+// shortBook = fut short + call short − put long   (bearish exposure)
+type BookView = "longBook" | "shortBook" | "longBookDelta" | "shortBookDelta";
+const PV_BOOK_OPTIONS: { key: BookView; label: string; panel: string; short: string }[] = [
+  { key: "longBook", label: "Long Book", panel: "Long book", short: "L.Book" },
+  { key: "shortBook", label: "Short Book", panel: "Short book", short: "S.Book" },
+  { key: "longBookDelta", label: "Long Book Δ", panel: "Long book — daily Δ", short: "ΔL.Bk" },
+  { key: "shortBookDelta", label: "Short Book Δ", panel: "Short book — daily Δ", short: "ΔS.Bk" },
 ];
-// Above this many points the §4 line panels are decimated (see pvKeepIndices).
-const PV_MAX_POINTS = 800;
-
-/** First index of the visible window. `ALL` (and any range longer than the file
- *  itself — e.g. 1Y against a 6-month archive) starts at 0, showing everything. */
-function pvRangeStart(dates: string[], range: RangeKey): number {
-  const opt = PV_RANGES.find((o) => o.key === range);
-  if (!opt || opt.months === null || dates.length === 0) return 0;
-  const [y, m, d] = dates[dates.length - 1].split("-").map(Number);
-  // Date.UTC rolls negative months back across year boundaries for us.
-  const cutoff = new Date(Date.UTC(y, m - 1 - opt.months, d)).toISOString().slice(0, 10);
-  // dates are ISO YYYY-MM-DD and sorted, so lexical compare IS chronological.
-  const i = dates.findIndex((s) => s >= cutoff);
-  return i < 0 ? 0 : i; // whole file older than the cutoff -> show it all
-}
-
-/** Which indices survive decimation. ALWAYS keeps the first and — critically —
- *  the LAST index: the header chips read `series[N-1]`, and a plain
- *  `i += stride` walk ends on the last multiple of stride, not on N-1, which
- *  would silently show a stale day at the wide ranges. */
-function pvKeepIndices(n: number, max: number): number[] | null {
-  if (n <= max) return null; // no decimation needed
-  const stride = Math.ceil((n - 1) / (max - 1));
-  const keep: number[] = [];
-  for (let i = 0; i < n - 1; i += stride) keep.push(i);
-  keep.push(n - 1);
-  return keep;
-}
-
-/** Apply ONE index set to every parallel array in lockstep — the date axis, the
- *  NIFTY closes, the expiry flags and every field of every participant series.
- *  Series fields are iterated generically: `ParticipantSeries` has 13 keys and a
- *  hand-written list would silently yield `undefined` for whichever one it missed. */
-function pvPick(data: ParticipantsData, idx: number[]): ParticipantsData {
-  const take = <T,>(arr: T[]): T[] => idx.map((i) => arr[i]);
-  const participants: Record<string, ParticipantSeries> = {};
-  for (const [p, s] of Object.entries(data.participants)) {
-    const out: Record<string, (number | null)[]> = {};
-    for (const k of Object.keys(s)) out[k] = take((s as unknown as Record<string, (number | null)[]>)[k]);
-    participants[p] = out as unknown as ParticipantSeries;
-  }
-  return {
-    ...data,
-    count: idx.length,
-    start: data.dates[idx[0]] ?? data.start,
-    end: data.dates[idx[idx.length - 1]] ?? data.end,
-    dates: take(data.dates),
-    dateDisplay: take(data.dateDisplay),
-    day: take(data.day),
-    expiry: take(data.expiry),
-    nifty: take(data.nifty),
-    participants,
-  };
-}
-
-/** The window [i0 .. last], every parallel array cut identically. */
-function sliceParticipantsData(data: ParticipantsData, i0: number, i1: number): ParticipantsData {
-  const lo = Math.max(0, Math.min(i0, data.dates.length - 1));
-  const hi = Math.max(lo, Math.min(i1, data.dates.length - 1));
-  if (lo === 0 && hi === data.dates.length - 1) return data;
-  const idx: number[] = [];
-  for (let i = lo; i <= hi; i++) idx.push(i);
-  return pvPick(data, idx);
-}
-
-/** Stride-sample a wide window down to a drawable number of points. ONLY safe
- *  for the §4 line panels: §5 reads day-over-day Δs, and sampling would quietly
- *  turn those into multi-day Δs and mis-attribute the daily driver. */
-function decimateParticipantsData(data: ParticipantsData, max: number): ParticipantsData {
-  const idx = pvKeepIndices(data.dates.length, max);
-  return idx ? pvPick(data, idx) : data;
-}
 
 /** Split a series into continuous segments (breaking on null) so the polyline
  *  gaps rather than plotting NaN across missing days. */
@@ -602,16 +494,15 @@ function ParticipantsNiftyChart({
   hover,
   setHover,
   tall,
-  mode,
+  bookView,
 }: {
   data: ParticipantsData;
   hover: number | null;
   setHover: (i: number | null) => void;
   tall?: boolean;
-  mode: BookMode;
+  bookView: BookView;
 }) {
-  const insts = PV_INSTRUMENTS[mode] ?? PV_INSTRUMENTS.main;
-  const zeroBased = mode === "main"; // nets straddle zero; gross legs never do
+  const bookOpt = PV_BOOK_OPTIONS.find((o) => o.key === bookView) ?? PV_BOOK_OPTIONS[0];
   const [width, setWidth] = useState(0);
   const [availH, setAvailH] = useState(0); // measured height of the plot box (for full-screen fit)
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -633,11 +524,17 @@ function ParticipantsNiftyChart({
   const N = data.dates.length;
   const active = hover ?? N - 1;
 
-  // panel bands, top→bottom: NIFTY close, then the three instrument panels —
-  // whose series are chosen by `mode` (net / gross long / gross short).
+  // panel bands, top→bottom: NIFTY close, the three net-instrument panels, then
+  // ONE selector-driven book panel (long/short book or their daily deltas).
   const bandDefs = [
     { kind: "nifty" as const, label: "NIFTY 50 close", unit: "pts" },
-    ...insts.map((ins) => ({ kind: "inst" as const, ins, label: ins.label, unit: "contracts" })),
+    ...PV_INSTRUMENTS.map((ins) => ({ kind: "inst" as const, ins, label: ins.label, unit: "contracts" })),
+    {
+      kind: "inst" as const,
+      ins: { key: bookView, label: bookOpt.panel },
+      label: bookOpt.panel,
+      unit: "contracts",
+    },
   ];
 
   // geometry — generous gaps so a panel's title never collides with the lines above.
@@ -687,11 +584,7 @@ function ParticipantsNiftyChart({
     }
     let lo = vals.length ? Math.min(...vals) : 0;
     let hi = vals.length ? Math.max(...vals) : 1;
-    // Nets straddle zero, so the zero line must stay in view. Gross long/short
-    // legs are always positive and large — forcing zero in would crush every
-    // day-to-day move into a sliver at the top of the band, so we let those
-    // panels auto-range tight around the actual values.
-    if (b.kind === "inst" && zeroBased) {
+    if (b.kind === "inst") {
       lo = Math.min(lo, 0);
       hi = Math.max(hi, 0);
     }
@@ -735,7 +628,7 @@ function ParticipantsNiftyChart({
           </span>
         </div>
         <div className="inline-flex items-baseline gap-2 justify-center w-full mt-1.5">
-          <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>
             NIFTY 50
           </span>
           <span
@@ -756,12 +649,10 @@ function ParticipantsNiftyChart({
         <div className="grid grid-rows-2 grid-flow-col gap-3 mx-auto w-fit">
           {PV_PARTICIPANTS.map((p) => {
             const s = data.participants[p];
-            // nets carry a sign (direction is the point); gross legs never do —
-            // a "+" in front of a long leg would misread as a one-day increase.
-            const cell = (v: number | null) => (v === null ? "—" : zeroBased ? signed(v) : fmt(v));
-            const stat = (key: string, label: string, v: number | null) => (
-              <span key={key} className="flex flex-col items-center leading-tight shrink-0" style={{ width: 78 }}>
-                <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
+            const cell = (v: number | null) => (v === null ? "—" : signed(v));
+            const stat = (label: string, v: number | null) => (
+              <span className="flex flex-col items-center leading-tight shrink-0" style={{ width: 78 }}>
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>
                   {label}
                 </span>
                 <span
@@ -786,7 +677,10 @@ function ParticipantsNiftyChart({
                   {p}
                 </span>
                 <div className="flex items-baseline gap-1">
-                  {insts.map((ins) => stat(ins.key, ins.chip, s[ins.key][active]))}
+                  {stat("Fut", s.futures[active])}
+                  {stat("Call", s.calls[active])}
+                  {stat("Put", s.puts[active])}
+                  {stat(bookOpt.short, s[bookView][active])}
                 </div>
               </div>
             );
@@ -842,11 +736,8 @@ function ParticipantsNiftyChart({
                     </>
                   ) : (
                     <>
-                      {/* zero baseline — only meaningful for the nets; a gross
-                          long/short panel never reaches zero, so it's omitted */}
-                      {zeroBased && (
-                        <line x1={plotL} x2={plotR} y1={sc.yOf(0)} y2={sc.yOf(0)} stroke={MUTED} strokeWidth={1} opacity={0.5} />
-                      )}
+                      {/* zero baseline */}
+                      <line x1={plotL} x2={plotR} y1={sc.yOf(0)} y2={sc.yOf(0)} stroke={MUTED} strokeWidth={1} opacity={0.5} />
                       {PV_PARTICIPANTS.map((p) => {
                         const series = data.participants[p][b.ins.key];
                         const v = series[active];
@@ -892,10 +783,10 @@ function ParticipantsNiftyChart({
                 key={"x" + i}
                 x={xOf(i)}
                 y={chartBottom + 16}
-                fontSize={12}
+                fontSize={9}
                 fill={MUTED}
                 textAnchor="middle"
-                style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}
+                style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {data.dateDisplay[i].slice(0, 6)}
               </text>
@@ -1086,7 +977,7 @@ function DriverFuturesChart({
   const niftyClose = data.nifty[active];
   const pill = (good: boolean): React.CSSProperties => ({
     fontFamily: "'DM Mono', monospace",
-    fontSize: 12,
+    fontSize: 10,
     letterSpacing: "0.04em",
     padding: "1px 6px",
     borderRadius: 4,
@@ -1113,7 +1004,7 @@ function DriverFuturesChart({
         </div>
         <div className="flex items-end gap-x-7 gap-y-2 flex-wrap">
           <div className="flex flex-col leading-tight">
-            <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
+            <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
               NIFTY 50
             </span>
             <span className="text-lg font-semibold" style={{ fontFamily: "'DM Mono', monospace", color: TEAL }}>
@@ -1121,7 +1012,7 @@ function DriverFuturesChart({
             </span>
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
+            <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
               1-day move
             </span>
             <span
@@ -1132,7 +1023,7 @@ function DriverFuturesChart({
             </span>
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
+            <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
               Driver
             </span>
             <span
@@ -1263,10 +1154,10 @@ function DriverFuturesChart({
                 key={"x" + i}
                 x={xOf(i)}
                 y={chartBottom + 16}
-                fontSize={12}
+                fontSize={10}
                 fill={MUTED}
                 textAnchor="middle"
-                style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}
+                style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {data.dateDisplay[i].slice(0, 6)}
               </text>
@@ -1360,7 +1251,7 @@ function DriverFuturesChart({
                   </span>
                 )}
               </div>
-              <p className="mt-3 text-xs leading-relaxed" style={{ color: "#B0AB9E" }}>
+              <p className="mt-3 text-[11px] leading-relaxed" style={{ color: "#B0AB9E" }}>
                 Driver = biggest 1-day Δ that agrees with the price move; absorber = biggest against it. Conviction = Δ ÷
                 the participant&apos;s own book. A positioning read, not proven causation; expiry days are rollover-distorted.
               </p>
@@ -1509,7 +1400,7 @@ function FiiNiftyChart({ participant }: { participant: string }) {
             { label: "Net puts", val: signed(ap.nets[participant].put), color: GREEN },
           ].map((s) => (
             <div key={s.label} className="flex flex-col leading-tight">
-              <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>
                 {s.label}
               </span>
               <span className="text-base md:text-lg font-semibold" style={{ fontFamily: "'DM Mono', monospace", color: s.color }}>
@@ -1555,7 +1446,7 @@ function FiiNiftyChart({ participant }: { participant: string }) {
               return (
                 <g key={b.label}>
                   {/* panel label */}
-                  <text x={plotL + 1} y={b.top + 11} fontSize={12} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
+                  <text x={plotL + 1} y={b.top + 11} fontSize={10} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
                     {b.label} <tspan fill="#C8C3B8">· {b.unit}</tspan>
                   </text>
                   {/* zero baseline on net panels */}
@@ -1592,10 +1483,10 @@ function FiiNiftyChart({ participant }: { participant: string }) {
                 key={"x" + i}
                 x={xOf(i)}
                 y={chartBottom + 16}
-                fontSize={12}
+                fontSize={9}
                 fill={MUTED}
                 textAnchor="middle"
-                style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}
+                style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {pts[i].dateDisplay.slice(0, 6)}
               </text>
@@ -1671,7 +1562,7 @@ function SectionHeader({
         {n}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: MUTED }}>
+        <p className="text-[10px] uppercase tracking-widest mb-1" style={{ color: MUTED }}>
           {eyebrow}
         </p>
         <p
@@ -1838,7 +1729,7 @@ function TuesdayLineChart({ rows }: { rows: TueRow[] }) {
             {yticks.map((tv, i) => (
               <g key={"y" + i}>
                 <line x1={plotL} x2={plotR} y1={yOf(tv)} y2={yOf(tv)} stroke={GRID} strokeWidth={0.7} opacity={0.7} />
-                <text x={plotL - 8} y={yOf(tv) + 3} fontSize={12} fill={MUTED} textAnchor="end" style={{ fontFamily: "'DM Mono', monospace" }}>
+                <text x={plotL - 8} y={yOf(tv) + 3} fontSize={9} fill={MUTED} textAnchor="end" style={{ fontFamily: "'DM Mono', monospace" }}>
                   {compactNum(Math.round(tv))}
                 </text>
               </g>
@@ -1850,7 +1741,7 @@ function TuesdayLineChart({ rows }: { rows: TueRow[] }) {
             {/* x labels */}
             {rows.map((r, i) =>
               i % tickEvery === 0 || i === N - 1 ? (
-                <text key={"x" + i} x={xOf(i)} y={plotB + 18} fontSize={12} fill={MUTED} textAnchor="middle" style={{ fontFamily: "'DM Mono', monospace" }}>
+                <text key={"x" + i} x={xOf(i)} y={plotB + 18} fontSize={9} fill={MUTED} textAnchor="middle" style={{ fontFamily: "'DM Mono', monospace" }}>
                   {r.display}
                 </text>
               ) : null
@@ -2149,7 +2040,7 @@ function ParticipantReport() {
                           {cell && cell.v != null ? valStr(cell.v) : "—"}
                         </div>
                         {cell && cell.chg != null && (
-                          <div className="text-xs" style={{ color: toneOf(cell.chg) }}>
+                          <div className="text-[10px]" style={{ color: toneOf(cell.chg) }}>
                             {signed(cell.chg)}
                           </div>
                         )}
@@ -2386,7 +2277,7 @@ function ParticipantDossier() {
           <span className="text-lg tracking-tight" style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, color: INK }}>
             Equinext Pulse
           </span>
-          <span className="text-xs uppercase tracking-widest" style={{ color: MUTED, fontFamily: "'DM Mono', monospace" }}>
+          <span className="text-[10px] uppercase tracking-widest" style={{ color: MUTED, fontFamily: "'DM Mono', monospace" }}>
             {I.label} · {fmtISO(activeDate)} · net one-day change
           </span>
         </div>
@@ -2437,7 +2328,7 @@ function ParticipantDossier() {
 
       {/* the chart */}
       <div className="px-6 md:px-8 pt-7">
-        <p className="text-xs uppercase tracking-widest mb-3" style={{ color: MUTED }}>
+        <p className="text-[10px] uppercase tracking-widest mb-3" style={{ color: MUTED }}>
           Net index {I.word} open interest · one-day change ({fmtISO(activeDate)}, contracts)
         </p>
         <div ref={box} className="w-full">
@@ -2480,7 +2371,7 @@ function ParticipantDossier() {
 
       {/* who holds what */}
       <div className="px-6 md:px-8 pt-7">
-        <p className="text-xs uppercase tracking-widest mb-3" style={{ color: MUTED }}>
+        <p className="text-[10px] uppercase tracking-widest mb-3" style={{ color: MUTED }}>
           Who holds what · NSE participant OI ({fmtISO(activeDate)}, net contracts)
         </p>
         <div className="space-y-3">
@@ -2489,7 +2380,7 @@ function ParticipantDossier() {
             return (
               <div key={p} className="flex items-start gap-3 pb-3 border-b border-border/40 last:border-0">
                 <span
-                  className="shrink-0 text-xs uppercase tracking-wider font-bold rounded px-2 py-1 mt-0.5"
+                  className="shrink-0 text-[10px] uppercase tracking-wider font-bold rounded px-2 py-1 mt-0.5"
                   style={{ background: "#12151C", color: "#FFFFFF", fontFamily: "'DM Mono', monospace" }}
                 >
                   {DNAME[p].short}
@@ -2531,10 +2422,7 @@ function ParticipantView() {
   const [pvFailed, setPvFailed] = useState(false);
   const [pvHover, setPvHover] = useState<number | null>(null);
   const [pvFull, setPvFull] = useState(false);
-  const [bookMode, setBookMode] = useState<BookMode>("main"); // §4: net / gross-long / gross-short
-  // Visible time window, shared by §4 and §5. Defaults to 6M, NOT All: the
-  // archive is ~2,600 days and first paint has to stay cheap.
-  const [range, setRange] = useState<RangeKey>("6M");
+  const [bookView, setBookView] = useState<BookView>("longBook"); // selector-driven bottom panel
 
   // "Who derived the move" — its own hover + full-screen, reusing the SAME pvData.
   const [dfHover, setDfHover] = useState<number | null>(null);
@@ -2594,65 +2482,19 @@ function ParticipantView() {
     `${participant} net is one side of a zero-sum book (${others} hold the other side) — this is ${participant}'s stance vs price, not the whole market.`,
   ];
 
-  // The visible window, computed ONCE and shared by §4 and §5 so both sections
-  // always show the same span. Slicing happens here, before render — the charts
-  // never receive days they aren't drawing.
-  const pvWindow = useMemo(
-    () => (pvData ? sliceParticipantsData(pvData, pvRangeStart(pvData.dates, range), pvData.dates.length - 1) : null),
-    [pvData, range],
-  );
-  // §4 draws 4 panels × 4 participants, so a wide window is decimated for it
-  // alone. §5 keeps the exact window: its driver/persistence maths is day-over-day.
-  const pvChart = useMemo(
-    () => (pvWindow ? decimateParticipantsData(pvWindow, PV_MAX_POINTS) : null),
-    [pvWindow],
-  );
-
-  // Changing range invalidates both hover indices (they address the OLD, longer
-  // array). Clear them in the same handler rather than in an effect, so no render
-  // ever runs with an out-of-bounds index.
-  const applyRange = (k: RangeKey) => {
-    setRange(k);
-    setPvHover(null);
-    setDfHover(null);
-  };
-
-  // Range selector — sibling of the mode selector below, same markup and styling.
-  // Used in BOTH inline cards and BOTH full-screen overlays, driving the same
-  // lifted `range` so every view stays in sync.
-  const rangeSelector = (
-    <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5" style={{ background: "#EDECEA" }}>
-      {PV_RANGES.map((o) => (
-        <button
-          key={o.key}
-          onClick={() => applyRange(o.key)}
-          className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-          style={{
-            background: range === o.key ? "#FFFFFF" : "transparent",
-            color: range === o.key ? INK : "#9E9A92",
-            boxShadow: range === o.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
-          }}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-
-  // Mode selector for §4 — shared markup used in BOTH the inline card and the
-  // full-screen overlay, driving the same lifted `bookMode` so they stay in sync.
-  // It swaps what the three instrument panels plot; it does not add a panel.
+  // Book-panel selector for §4 — shared markup used in BOTH the inline card and the
+  // full-screen overlay, driving the same lifted `bookView` so they stay in sync.
   const bookSelector = (
     <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5" style={{ background: "#EDECEA" }}>
-      {PV_MODES.map((o) => (
+      {PV_BOOK_OPTIONS.map((o) => (
         <button
           key={o.key}
-          onClick={() => setBookMode(o.key)}
+          onClick={() => setBookView(o.key)}
           className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
           style={{
-            background: bookMode === o.key ? "#FFFFFF" : "transparent",
-            color: bookMode === o.key ? INK : "#9E9A92",
-            boxShadow: bookMode === o.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
+            background: bookView === o.key ? "#FFFFFF" : "transparent",
+            color: bookView === o.key ? INK : "#9E9A92",
+            boxShadow: bookView === o.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
           }}
         >
           {o.label}
@@ -2755,7 +2597,7 @@ function ParticipantView() {
           <FiiNiftyChart participant={participant} />
           {/* Reading notes (the caveats, as selectable text) */}
           <div className="rounded-2xl border border-border px-7 py-6 space-y-2.5" style={{ background: "#FFFFFF" }}>
-            <p className="text-xs uppercase tracking-widest" style={{ color: MUTED }}>
+            <p className="text-[10px] uppercase tracking-widest" style={{ color: MUTED }}>
               Reading notes
             </p>
             {caveats.map((c, i) => (
@@ -2779,11 +2621,9 @@ function ParticipantView() {
           title="All four participants against NIFTY 50"
         >
           <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 620 }}>
-            The same shared timeline, but every participant at once — FII, DII, Client and Pro
-            futures, calls and puts on one colour key. The selector swaps all three panels between
-            the net position and the gross long or short leg behind it, so you can see how much of
-            each book is being carried on either side. Each panel keeps its own natural units;
-            nothing is normalised. Hover any day to read all four participants together.
+            The same shared timeline, but every participant at once — FII, DII, Client and Pro net
+            futures, calls and puts on one colour key. Each panel keeps its own natural units;
+            nothing is normalised. Hover any day to read all four books together.
           </p>
         </SectionHeader>
         <div className="mt-6">
@@ -2799,10 +2639,7 @@ function ParticipantView() {
           ) : (
             <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "#FFFFFF" }}>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  {bookSelector}
-                  {rangeSelector}
-                </div>
+                {bookSelector}
                 <button
                   onClick={() => setPvFull(true)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
@@ -2811,7 +2648,7 @@ function ParticipantView() {
                   ⤢ Full screen
                 </button>
               </div>
-              {pvChart && <ParticipantsNiftyChart data={pvChart} hover={pvHover} setHover={setPvHover} mode={bookMode} />}
+              <ParticipantsNiftyChart data={pvData} hover={pvHover} setHover={setPvHover} bookView={bookView} />
             </div>
           )}
         </div>
@@ -2838,7 +2675,6 @@ function ParticipantView() {
             </p>
             <div className="flex flex-wrap items-center gap-3">
               {bookSelector}
-              {rangeSelector}
               <button
                 onClick={() => setPvFull(false)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
@@ -2849,7 +2685,7 @@ function ParticipantView() {
             </div>
           </div>
           <div style={{ flex: "1 1 0", minHeight: 0 }}>
-            {pvChart && <ParticipantsNiftyChart data={pvChart} hover={pvHover} setHover={setPvHover} tall mode={bookMode} />}
+            <ParticipantsNiftyChart data={pvData} hover={pvHover} setHover={setPvHover} tall bookView={bookView} />
           </div>
         </div>
       )}
@@ -2880,8 +2716,7 @@ function ParticipantView() {
             </div>
           ) : (
             <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "#FFFFFF" }}>
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-                {rangeSelector}
+              <div className="flex justify-end mb-1">
                 <button
                   onClick={() => setDfFull(true)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
@@ -2890,7 +2725,7 @@ function ParticipantView() {
                   ⤢ Full screen
                 </button>
               </div>
-              {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} />}
+              <DriverFuturesChart data={pvData} hover={dfHover} setHover={setDfHover} />
             </div>
           )}
         </div>
@@ -2915,19 +2750,16 @@ function ParticipantView() {
             <p className="text-lg font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: INK }}>
               <em>Who drove each day — Index Futures</em>
             </p>
-            <div className="flex flex-wrap items-center gap-3">
-              {rangeSelector}
-              <button
-                onClick={() => setDfFull(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ color: INK, background: "#FFFFFF" }}
-              >
-                ✕ Close (Esc)
-              </button>
-            </div>
+            <button
+              onClick={() => setDfFull(false)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
+              style={{ color: INK, background: "#FFFFFF" }}
+            >
+              ✕ Close (Esc)
+            </button>
           </div>
           <div style={{ flex: "1 1 0", minHeight: 0 }}>
-            {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} tall />}
+            <DriverFuturesChart data={pvData} hover={dfHover} setHover={setDfHover} tall />
           </div>
         </div>
       )}
@@ -3041,7 +2873,7 @@ export default function App() {
                 {item.label}
                 {item.soon && (
                   <span
-                    className="text-xs uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+                    className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full"
                     style={{
                       background: "rgba(255,255,255,0.08)",
                       color: "rgba(255,255,255,0.3)",
@@ -3198,7 +3030,7 @@ export default function App() {
             className="rounded-xl border border-border px-6 py-5"
             style={{ background: "#FFFFFF" }}
           >
-            <p className="text-xs uppercase tracking-widest mb-2" style={{ color: "#9E9A92" }}>
+            <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: "#9E9A92" }}>
               Not available
             </p>
             <p className="text-sm" style={{ color: "#2E2B26" }}>{data.reason}</p>
@@ -3213,7 +3045,7 @@ export default function App() {
               style={{ background: "#FFFFFF" }}
             >
               <p
-                className="text-xs uppercase tracking-widest mb-2"
+                className="text-[10px] uppercase tracking-widest mb-2"
                 style={{ color: "#9E9A92" }}
               >
                 Biggest Move
@@ -3258,7 +3090,7 @@ export default function App() {
                 style={{ background: "#FFFFFF" }}
               >
                 <span
-                  className="text-xs uppercase tracking-widest shrink-0"
+                  className="text-[10px] uppercase tracking-widest shrink-0"
                   style={{ color: "#9E9A92" }}
                 >
                   Total

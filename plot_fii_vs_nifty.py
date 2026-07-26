@@ -32,10 +32,24 @@ from pathlib import Path
 
 WEEKDAY_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-import matplotlib
-matplotlib.use("Agg")                     # headless: write a file, never open a window
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+# matplotlib is imported LAZILY (see _ensure_mpl) so the JSON-emit path — used by
+# the daily job, which runs in a venv WITHOUT matplotlib — never needs it. Only the
+# PNG-plotting path (build_figure) pulls it in.
+plt = None
+FuncFormatter = None
+
+
+def _ensure_mpl():
+    """Populate the module-level plt / FuncFormatter on first plotting use."""
+    global plt, FuncFormatter
+    if plt is not None:
+        return
+    import matplotlib
+    matplotlib.use("Agg")                 # headless: write a file, never open a window
+    import matplotlib.pyplot as _plt
+    from matplotlib.ticker import FuncFormatter as _FF
+    plt = _plt
+    FuncFormatter = _FF
 
 SYMBOL = "NIFTY 50"
 
@@ -60,15 +74,32 @@ ACTORS = ["Client", "DII", "FII", "Pro"]   # the frontend can select any of thes
 
 
 def load_all(conn, start, end):
-    """Join ALL four participants' index-OI nets with the NIFTY close on the
-    shared trading dates. Returns (dates, close, series) where
-    series[actor] = {'fut': [...], 'call': [...], 'put': [...]} aligned to dates."""
+    """Join ALL four participants' index-OI positions with the NIFTY close on the
+    shared trading dates. Returns (dates, close, series) where series[actor] holds,
+    aligned to dates:
+      'fut' / 'call' / 'put'          -- the nets (long - short) per instrument
+      'fut_l' / 'fut_s' / 'call_l' /  -- the GROSS legs, carried through so the
+      'call_s' / 'put_l' / 'put_s'       frontend can switch its three instrument
+                                         panels between net / long-only / short-only
+      'long_book' / 'short_book'      -- the derived directional books:
+        long_book  = future_index_long  + option_index_call_long  - option_index_put_short
+        short_book = future_index_short + option_index_call_short - option_index_put_long
+    (a long call and a short put are both bullish exposure; the opposite legs are
+    bearish)."""
     q = """
         SELECT p.date, p.participant_type,
                (p.future_index_long      - p.future_index_short)      AS fut,
                (p.option_index_call_long - p.option_index_call_short) AS call,
                (p.option_index_put_long  - p.option_index_put_short)  AS put,
-               x.close                                                AS close
+               (p.future_index_long  + p.option_index_call_long  - p.option_index_put_short) AS long_book,
+               (p.future_index_short + p.option_index_call_short - p.option_index_put_long)  AS short_book,
+               x.close                                                AS close,
+               p.future_index_long       AS fut_l,
+               p.future_index_short      AS fut_s,
+               p.option_index_call_long  AS call_l,
+               p.option_index_call_short AS call_s,
+               p.option_index_put_long   AS put_l,
+               p.option_index_put_short  AS put_s
         FROM participant_oi p
         JOIN index_prices  x ON x.date = p.date AND x.symbol = ?
         WHERE p.participant_type IN ('Client', 'DII', 'FII', 'Pro')
@@ -80,24 +111,28 @@ def load_all(conn, start, end):
         q += " AND p.date <= ?"; params.append(end)
     q += " ORDER BY p.date"
 
+    # column order of the SELECT above, minus date/participant/close
+    FIELDS = ["fut", "call", "put", "long_book", "short_book",
+              "fut_l", "fut_s", "call_l", "call_s", "put_l", "put_s"]
+
     close_by = {}
-    net = {}                                   # (date, actor) -> (fut, call, put)
+    rows = {}                                  # (date, actor) -> tuple in FIELDS order
     dates = set()
     for r in conn.execute(q, params):
         d, a = r[0], r[1]
         dates.add(d)
-        close_by[d] = r[5]
-        net[(d, a)] = (r[2], r[3], r[4])
+        close_by[d] = r[7]
+        rows[(d, a)] = (r[2], r[3], r[4], r[5], r[6]) + tuple(r[8:14])
 
     dates = sorted(dates)
     close = [close_by[d] for d in dates]
-    series = {a: {"fut": [], "call": [], "put": []} for a in ACTORS}
+    series = {a: {f: [] for f in FIELDS} for a in ACTORS}
+    blank = (None,) * len(FIELDS)
     for d in dates:
         for a in ACTORS:
-            f, c, pu = net.get((d, a), (None, None, None))
-            series[a]["fut"].append(f)
-            series[a]["call"].append(c)
-            series[a]["put"].append(pu)
+            vals = rows.get((d, a), blank)
+            for f, v in zip(FIELDS, vals):
+                series[a][f].append(v)
     return dates, close, series
 
 
@@ -143,12 +178,38 @@ def write_participants_json(dates, close, series, out_path):
     its readout, dd-Mon ticks and Thursday-expiry verticals without re-parsing
     dates on the client (avoids a timezone off-by-one on which day is expiry)."""
     dts = [datetime.fromisoformat(d) for d in dates]
+
+    def _ints(vals):
+        return [None if v is None else int(v) for v in vals]
+
+    def _delta(vals):
+        """Day-over-day difference; first day (and any day adjacent to a gap) null."""
+        out = [None]
+        for i in range(1, len(vals)):
+            a, b = vals[i], vals[i - 1]
+            out.append(None if a is None or b is None else int(a) - int(b))
+        return out
+
     participants = {}
     for a in ACTORS:
+        long_book = series[a]["long_book"]
+        short_book = series[a]["short_book"]
         participants[a] = {
-            "futures": [None if v is None else int(v) for v in series[a]["fut"]],
-            "calls":   [None if v is None else int(v) for v in series[a]["call"]],
-            "puts":    [None if v is None else int(v) for v in series[a]["put"]],
+            "futures": _ints(series[a]["fut"]),
+            "calls":   _ints(series[a]["call"]),
+            "puts":    _ints(series[a]["put"]),
+            # gross legs — the frontend's "Long book" / "Short book" modes swap the
+            # three instrument panels onto these instead of the nets above.
+            "futuresLong":  _ints(series[a]["fut_l"]),
+            "futuresShort": _ints(series[a]["fut_s"]),
+            "callsLong":    _ints(series[a]["call_l"]),
+            "callsShort":   _ints(series[a]["call_s"]),
+            "putsLong":     _ints(series[a]["put_l"]),
+            "putsShort":    _ints(series[a]["put_s"]),
+            "longBook":       _ints(long_book),
+            "shortBook":      _ints(short_book),
+            "longBookDelta":  _delta(long_book),
+            "shortBookDelta": _delta(short_book),
         }
     payload = {
         "symbol": SYMBOL,
@@ -209,6 +270,7 @@ def net_panel(ax, x, y, title, color_pos=GREEN, color_neg=RED):
 
 
 def build_figure(dates, fut, call, put, close):
+    _ensure_mpl()                          # pull in matplotlib only when actually plotting
     x = list(range(len(dates)))
     thursdays = [i for i, d in enumerate(dates)
                  if datetime.fromisoformat(d).weekday() == 3]

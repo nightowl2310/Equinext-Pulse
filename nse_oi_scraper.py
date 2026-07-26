@@ -506,6 +506,16 @@ def print_daily_movers(db_path: Path, holidays_path: Path) -> None:
         except Exception as exc:         # never let this break the job either
             log(f"Could not refresh participant report: {exc}")
 
+        # Refresh the NIFTY 50 spot (index_prices) FIRST, so the overlay JSON below
+        # has today's close. The OI is already loaded, so index_prices' default range
+        # now reaches today. Yahoo Finance, read-only join later; no matplotlib.
+        try:
+            import scraper
+            ins, skp = scraper.refresh(conn)
+            log(f"NIFTY 50 prices refreshed: +{ins} new, {skp} already present")
+        except Exception as exc:         # a price hiccup must not break the OI job
+            log(f"Could not refresh NIFTY 50 prices: {exc}")
+
         # Refresh participants_vs_nifty.json (the "NIFTY vs All Participants"
         # section: all four participants' net futures/calls/puts vs NIFTY close).
         try:
