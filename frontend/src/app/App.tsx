@@ -1,4 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type BookMode,
+  type MetricKey,
+  type ParticipantSeries,
+  type ParticipantsData,
+  type RangeKey,
+  PV_COLORS,
+  PV_METRICS,
+  PV_MODES,
+  PV_PARTICIPANTS,
+  PV_RANGES,
+  metricLabel,
+  pvRangeStart,
+  sliceParticipantsData,
+} from "./lib/series";
+import { ParticipantChart, type RenderMode } from "./components/ParticipantChart";
 
 type Tab = "daily" | "weekly" | "monthly";
 type Section = "weekly" | "participant" | "oi";
@@ -82,15 +98,15 @@ interface BriefData {
 }
 
 // ─── palette constants ───────────────────────────────────────────────────────
-const GREEN = "#158A4E";
-const RED = "#C0362C";
+const GREEN = "var(--ink-bull)";
+const RED = "var(--ink-bear)";
 const TEAL = "#0EA5A4";
-const INK = "#12151C";
-const BG = "#F7F6F2";
-const GRID = "#E5E1D8";
+const INK = "var(--ink)";
+const BG = "var(--surface-page)";
+const GRID = "var(--grid)";
 
 // ─── number helpers ──────────────────────────────────────────────────────────
-const MUTED = "#9E9A92";
+const MUTED = "var(--ink-muted)";
 
 function fmt(v: number): string {
   return Math.abs(v).toLocaleString("en-US");
@@ -127,13 +143,13 @@ function Gauge({ score }: { score: number }) {
   return (
     <svg viewBox="0 0 200 100" className="w-full" aria-label={`Gauge: ${score}`}>
       {/* Track */}
-      <path d={arcPath} fill="none" stroke="#E5E1D8" strokeWidth="10" strokeLinecap="round" />
+      <path d={arcPath} fill="none" stroke="var(--grid)" strokeWidth="10" strokeLinecap="round" />
       {/* Bearish end */}
       <circle cx={cx - r} cy={cy} r="5" fill={RED} />
       {/* Bullish end */}
       <circle cx={cx + r} cy={cy} r="5" fill={GREEN} />
       {/* Neutral tick */}
-      <circle cx={cx} cy={cy - r} r="3" fill="#C8C3B8" />
+      <circle cx={cx} cy={cy - r} r="3" fill="var(--hairline)" />
       {/* Needle shaft */}
       <line
         x1={cx}
@@ -169,9 +185,9 @@ function BookChip({
       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs"
       style={{
         fontFamily: "'DM Mono', monospace",
-        background: flat ? "#F2F1EE" : pos ? "#EBF6EF" : "#FBEEEC",
+        background: flat ? "var(--tint-flat)" : pos ? "var(--tint-bull)" : "var(--tint-bear)",
         color: flat ? MUTED : pos ? GREEN : RED,
-        border: `1px solid ${flat ? "#E5E1D8" : pos ? "#BEE3CC" : "#F0C6C1"}`,
+        border: `1px solid ${flat ? "var(--grid)" : pos ? "var(--edge-bull)" : "var(--edge-bear)"}`,
       }}
     >
       {label} {signed(change)} ({pctStr(pctV)})
@@ -183,7 +199,7 @@ function ActorCard({ actor }: { actor: Actor }) {
   return (
     <div
       className="rounded-xl border border-border overflow-hidden"
-      style={{ background: "#FFFFFF" }}
+      style={{ background: "var(--surface-card)" }}
     >
       {/* Card header */}
       <div className="px-6 pt-5 pb-4 border-b border-border">
@@ -197,7 +213,7 @@ function ActorCard({ actor }: { actor: Actor }) {
           {actor.coverage && (
             <span
               className="text-xs uppercase tracking-widest border border-border rounded px-1.5 py-0.5"
-              style={{ color: "#9E9A92" }}
+              style={{ color: "var(--ink-muted)" }}
             >
               coverage
             </span>
@@ -213,7 +229,7 @@ function ActorCard({ actor }: { actor: Actor }) {
       <div className="overflow-x-auto">
         <table className="w-full text-xs min-w-[560px]">
           <thead>
-            <tr className="border-b border-border" style={{ color: "#9E9A92" }}>
+            <tr className="border-b border-border" style={{ color: "var(--ink-muted)" }}>
               <th className="text-left px-6 py-2.5 font-normal">Field</th>
               <th className="text-right px-4 py-2.5 font-normal whitespace-nowrap">
                 Old → New
@@ -235,12 +251,12 @@ function ActorCard({ actor }: { actor: Actor }) {
                   ((e.currentTarget as HTMLElement).style.background = "transparent")
                 }
               >
-                <td className="px-6 py-2.5 whitespace-nowrap" style={{ color: "#4A4740" }}>
+                <td className="px-6 py-2.5 whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>
                   {move.field}
                 </td>
                 <td
                   className="px-4 py-2.5 text-right whitespace-nowrap"
-                  style={{ color: "#9E9A92" }}
+                  style={{ color: "var(--ink-muted)" }}
                 >
                   {fmt(move.oldVal)} → {fmt(move.newVal)}
                 </td>
@@ -274,11 +290,11 @@ function ReadPanel({ data }: { data: BriefData }) {
       {/* Gauge */}
       <div
         className="rounded-xl border border-border p-5"
-        style={{ background: "#FFFFFF" }}
+        style={{ background: "var(--surface-card)" }}
       >
         <p
           className="text-xs uppercase tracking-widest mb-3"
-          style={{ color: "#9E9A92" }}
+          style={{ color: "var(--ink-muted)" }}
         >
           Market Read
         </p>
@@ -299,7 +315,7 @@ function ReadPanel({ data }: { data: BriefData }) {
         </div>
         <p
           className="text-xs text-center mt-1"
-          style={{ color: "#B0AB9E", fontFamily: "'DM Mono', monospace" }}
+          style={{ color: "var(--ink-muted)", fontFamily: "'DM Mono', monospace" }}
         >
           −1 bearish · 0 neutral · +1 bullish
         </p>
@@ -308,11 +324,11 @@ function ReadPanel({ data }: { data: BriefData }) {
       {/* Signals */}
       <div
         className="rounded-xl border border-border p-5 space-y-3"
-        style={{ background: "#FFFFFF" }}
+        style={{ background: "var(--surface-card)" }}
       >
         <p
           className="text-xs uppercase tracking-widest"
-          style={{ color: "#9E9A92" }}
+          style={{ color: "var(--ink-muted)" }}
         >
           Signals
         </p>
@@ -321,7 +337,7 @@ function ReadPanel({ data }: { data: BriefData }) {
             <span
               className="shrink-0 text-xs uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded mt-0.5"
               style={{
-                background: s.sentiment === "bullish" ? "#EBF6EF" : "#FBEEEC",
+                background: s.sentiment === "bullish" ? "var(--tint-bull)" : "var(--tint-bear)",
                 color: s.sentiment === "bullish" ? GREEN : RED,
               }}
             >
@@ -331,7 +347,7 @@ function ReadPanel({ data }: { data: BriefData }) {
               className="text-xs leading-relaxed"
               style={{
                 fontFamily: "'DM Mono', monospace",
-                color: "#4A4740",
+                color: "var(--ink-soft)",
               }}
             >
               {s.text}
@@ -343,20 +359,20 @@ function ReadPanel({ data }: { data: BriefData }) {
       {/* Action */}
       <div
         className="rounded-xl border border-border p-5"
-        style={{ background: "#FFFFFF" }}
+        style={{ background: "var(--surface-card)" }}
       >
         <p
           className="text-xs uppercase tracking-widest mb-2"
-          style={{ color: "#9E9A92" }}
+          style={{ color: "var(--ink-muted)" }}
         >
           Action
         </p>
-        <p className="text-sm leading-relaxed" style={{ color: "#2E2B26" }}>
+        <p className="text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
           {data.action}
         </p>
         <p
           className="text-xs mt-3 pt-3 border-t border-border"
-          style={{ color: "#B0AB9E" }}
+          style={{ color: "var(--ink-muted)" }}
         >
           {data.disclaimer}
         </p>
@@ -365,211 +381,9 @@ function ReadPanel({ data }: { data: BriefData }) {
   );
 }
 
-// ─── FII vs NIFTY view ───────────────────────────────────────────────────────
-// The three honesty caveats, kept in sync with the ones burned into the PNG
-// by plot_fii_vs_nifty.py. Shown as selectable HTML too, since the PNG's own
-// caption text is tiny on small screens.
-const FII_NIFTY_CAVEATS = [
-  "Index OI aggregates ALL index F&O (NIFTY + BANKNIFTY + FINNIFTY + MIDCPNIFTY + NEXT50); NIFTY 50 close is a directional proxy, not an exact match.",
-  "Thursday (weekly-expiry) vertical lines: OI jumps there are mechanical rollover, not sentiment.",
-  "FII net is one side of a zero-sum book (Client / DII / Pro hold the other side) — this is FII's stance vs price, not the whole market.",
-];
-
-// ── the interactive chart data contract (written by plot_fii_vs_nifty.py) ──
-interface PricePoint {
-  date: string;
-  dateDisplay: string; // "16 Jan 2026"
-  day: string; // "Friday"
-  expiry: boolean; // Thursday = weekly expiry
-  close: number;
-  // per-participant nets, keyed by "Client" | "DII" | "FII" | "Pro"
-  nets: Record<string, { fut: number; call: number; put: number }>;
-}
-interface FiiNiftyData {
-  symbol: string;
-  start: string;
-  end: string;
-  count: number;
-  actors: string[];
-  points: PricePoint[];
-}
-
-// Panels, top→bottom. `net` panels get a zero baseline and read the SELECTED
-// participant's net; the top panel is always the NIFTY close.
-const PANELS: {
-  sub: "fut" | "call" | "put" | null; // null = NIFTY close
-  label: string;
-  unit: string;
-  color: string;
-  net: boolean;
-  h: number;
-}[] = [
-  { sub: null, label: "NIFTY 50 close", unit: "pts", color: TEAL, net: false, h: 150 },
-  { sub: "fut", label: "Net index futures", unit: "contracts", color: "#D97706", net: true, h: 98 },
-  { sub: "call", label: "Net index calls", unit: "contracts", color: RED, net: true, h: 98 },
-  { sub: "put", label: "Net index puts", unit: "contracts", color: GREEN, net: true, h: 98 },
-];
 
 function priceStr(v: number): string {
   return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// ── "NIFTY vs All Participants" data contract (participants_vs_nifty.json,
-//    written by plot_fii_vs_nifty.py). Columnar arrays on the shared date axis. ──
-interface ParticipantSeries {
-  futures: (number | null)[];
-  calls: (number | null)[];
-  puts: (number | null)[];
-  // gross legs (always ≥ 0) — the "Long book" / "Short book" modes plot these in
-  // the same three instrument panels instead of the nets above.
-  futuresLong: (number | null)[];
-  futuresShort: (number | null)[];
-  callsLong: (number | null)[];
-  callsShort: (number | null)[];
-  putsLong: (number | null)[];
-  putsShort: (number | null)[];
-  longBook: (number | null)[];
-  shortBook: (number | null)[];
-  longBookDelta: (number | null)[];
-  shortBookDelta: (number | null)[];
-}
-interface ParticipantsData {
-  symbol: string;
-  start: string;
-  end: string;
-  count: number;
-  dates: string[];
-  dateDisplay: string[]; // "20 Jul 2026"
-  day: string[]; // "Monday"
-  expiry: boolean[]; // Thursday = weekly expiry
-  nifty: (number | null)[];
-  participants: Record<string, ParticipantSeries>; // "FII" | "DII" | "Client" | "Pro"
-}
-
-// One consistent colour per participant, used across ALL instrument panels + legend.
-const PV_PARTICIPANTS = ["FII", "DII", "Client", "Pro"] as const;
-const PV_COLORS: Record<string, string> = {
-  FII: "#0EA5A4", // teal
-  DII: "#E1A200", // amber
-  Client: "#C0362C", // red
-  Pro: "#158A4E", // green
-};
-// The chart's three instrument panels (the top NIFTY panel is handled separately)
-// are MODE-DRIVEN: the same three panels swap which series they plot.
-//   main      → the nets (long − short), which straddle zero
-//   longBook  → the gross long leg of each instrument
-//   shortBook → the gross short leg of each instrument
-// Gross legs are strictly positive and an order of magnitude larger than the
-// nets, so the zero line / zero clamp only applies in "main" (see `scales`).
-type BookMode = "main" | "longBook" | "shortBook";
-const PV_MODES: { key: BookMode; label: string }[] = [
-  { key: "main", label: "Main" },
-  { key: "longBook", label: "Long Book" },
-  { key: "shortBook", label: "Short Book" },
-];
-type PvInstrument = { key: keyof ParticipantSeries; label: string; chip: string };
-const PV_INSTRUMENTS: Record<BookMode, PvInstrument[]> = {
-  main: [
-    { key: "futures", label: "Net index futures", chip: "Fut" },
-    { key: "calls", label: "Net index calls", chip: "Call" },
-    { key: "puts", label: "Net index puts", chip: "Put" },
-  ],
-  longBook: [
-    { key: "futuresLong", label: "Index futures — long", chip: "Fut L" },
-    { key: "callsLong", label: "Index calls — long", chip: "Call L" },
-    { key: "putsLong", label: "Index puts — long", chip: "Put L" },
-  ],
-  shortBook: [
-    { key: "futuresShort", label: "Index futures — short", chip: "Fut S" },
-    { key: "callsShort", label: "Index calls — short", chip: "Call S" },
-    { key: "putsShort", label: "Index puts — short", chip: "Put S" },
-  ],
-};
-
-// ── Time-range filter (§4 + §5) ──────────────────────────────────────────────
-// The archive runs to ~2,600 trading days, so the chart must be handed a SLICE,
-// never the whole file with the excess hidden at render time. Ranges are
-// calendar-relative to the LAST date in the file (trading days per month vary),
-// so we compute a cutoff date and find the first index at or after it.
-type RangeKey = "1M" | "6M" | "1Y" | "3Y" | "ALL";
-const PV_RANGES: { key: RangeKey; label: string; months: number | null }[] = [
-  { key: "1M", label: "1M", months: 1 },
-  { key: "6M", label: "6M", months: 6 },
-  { key: "1Y", label: "1Y", months: 12 },
-  { key: "3Y", label: "3Y", months: 36 },
-  { key: "ALL", label: "All", months: null },
-];
-// Above this many points the §4 line panels are decimated (see pvKeepIndices).
-const PV_MAX_POINTS = 800;
-
-/** First index of the visible window. `ALL` (and any range longer than the file
- *  itself — e.g. 1Y against a 6-month archive) starts at 0, showing everything. */
-function pvRangeStart(dates: string[], range: RangeKey): number {
-  const opt = PV_RANGES.find((o) => o.key === range);
-  if (!opt || opt.months === null || dates.length === 0) return 0;
-  const [y, m, d] = dates[dates.length - 1].split("-").map(Number);
-  // Date.UTC rolls negative months back across year boundaries for us.
-  const cutoff = new Date(Date.UTC(y, m - 1 - opt.months, d)).toISOString().slice(0, 10);
-  // dates are ISO YYYY-MM-DD and sorted, so lexical compare IS chronological.
-  const i = dates.findIndex((s) => s >= cutoff);
-  return i < 0 ? 0 : i; // whole file older than the cutoff -> show it all
-}
-
-/** Which indices survive decimation. ALWAYS keeps the first and — critically —
- *  the LAST index: the header chips read `series[N-1]`, and a plain
- *  `i += stride` walk ends on the last multiple of stride, not on N-1, which
- *  would silently show a stale day at the wide ranges. */
-function pvKeepIndices(n: number, max: number): number[] | null {
-  if (n <= max) return null; // no decimation needed
-  const stride = Math.ceil((n - 1) / (max - 1));
-  const keep: number[] = [];
-  for (let i = 0; i < n - 1; i += stride) keep.push(i);
-  keep.push(n - 1);
-  return keep;
-}
-
-/** Apply ONE index set to every parallel array in lockstep — the date axis, the
- *  NIFTY closes, the expiry flags and every field of every participant series.
- *  Series fields are iterated generically: `ParticipantSeries` has 13 keys and a
- *  hand-written list would silently yield `undefined` for whichever one it missed. */
-function pvPick(data: ParticipantsData, idx: number[]): ParticipantsData {
-  const take = <T,>(arr: T[]): T[] => idx.map((i) => arr[i]);
-  const participants: Record<string, ParticipantSeries> = {};
-  for (const [p, s] of Object.entries(data.participants)) {
-    const out: Record<string, (number | null)[]> = {};
-    for (const k of Object.keys(s)) out[k] = take((s as unknown as Record<string, (number | null)[]>)[k]);
-    participants[p] = out as unknown as ParticipantSeries;
-  }
-  return {
-    ...data,
-    count: idx.length,
-    start: data.dates[idx[0]] ?? data.start,
-    end: data.dates[idx[idx.length - 1]] ?? data.end,
-    dates: take(data.dates),
-    dateDisplay: take(data.dateDisplay),
-    day: take(data.day),
-    expiry: take(data.expiry),
-    nifty: take(data.nifty),
-    participants,
-  };
-}
-
-/** The window [i0 .. last], every parallel array cut identically. */
-function sliceParticipantsData(data: ParticipantsData, i0: number, i1: number): ParticipantsData {
-  const lo = Math.max(0, Math.min(i0, data.dates.length - 1));
-  const hi = Math.max(lo, Math.min(i1, data.dates.length - 1));
-  if (lo === 0 && hi === data.dates.length - 1) return data;
-  const idx: number[] = [];
-  for (let i = lo; i <= hi; i++) idx.push(i);
-  return pvPick(data, idx);
-}
-
-/** Stride-sample a wide window down to a drawable number of points. ONLY safe
- *  for the §4 line panels: §5 reads day-over-day Δs, and sampling would quietly
- *  turn those into multi-day Δs and mis-attribute the daily driver. */
-function decimateParticipantsData(data: ParticipantsData, max: number): ParticipantsData {
-  const idx = pvKeepIndices(data.dates.length, max);
-  return idx ? pvPick(data, idx) : data;
 }
 
 /** Split a series into continuous segments (breaking on null) so the polyline
@@ -593,336 +407,60 @@ function pvSegments(
   return segs;
 }
 
-/** ONE reusable chart for the "NIFTY vs All Participants" section. Pure render:
- *  all shared state (loaded data, hovered index) is lifted to the parent so the
- *  inline card and the full-screen overlay stay perfectly in sync. `tall` grows
- *  the panels for full-screen; nothing else changes. */
-function ParticipantsNiftyChart({
-  data,
-  hover,
-  setHover,
-  tall,
-  mode,
-}: {
-  data: ParticipantsData;
-  hover: number | null;
-  setHover: (i: number | null) => void;
-  tall?: boolean;
-  mode: BookMode;
-}) {
-  const insts = PV_INSTRUMENTS[mode] ?? PV_INSTRUMENTS.main;
-  const zeroBased = mode === "main"; // nets straddle zero; gross legs never do
-  const [width, setWidth] = useState(0);
-  const [availH, setAvailH] = useState(0); // measured height of the plot box (for full-screen fit)
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const measure = () => {
-      setWidth(el.clientWidth);
-      setAvailH(el.clientHeight);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+// §5 runs on ONE instrument at a time. `inverted` marks the leg where a RISING
+// net position is bearish: buying puts is a bet on a fall, so a put build-up
+// "agrees" with a DOWN move. Futures and calls read the natural way. (Same
+// convention the dossier copy already uses for the put leg.)
+// `long`/`short` are the GROSS legs, used as the conviction denominator. The net
+// must NOT be used there: for options it is a small difference between two huge
+// legs (Client calls: 3.51M long − 3.46M short = 47k net), so an ordinary daily
+// Δ divided by it reads as 100–270% "conviction". Divided by the gross book the
+// figure behaves the same way across all three instruments — median ~2-3%, p90
+// ~9-12% over the full history — so the 8% / 3% wording thresholds still hold.
+const DF_INSTRUMENTS: {
+  key: keyof ParticipantSeries;
+  label: string;
+  panel: string;
+  word: string;
+  inverted: boolean;
+  long: keyof ParticipantSeries;
+  short: keyof ParticipantSeries;
+}[] = [
+  { key: "futures", label: "Index Futures", panel: "Net index futures", word: "futures", inverted: false, long: "futuresLong", short: "futuresShort" },
+  { key: "calls", label: "Index Calls", panel: "Net index calls", word: "calls", inverted: false, long: "callsLong", short: "callsShort" },
+  { key: "puts", label: "Index Puts", panel: "Net index puts", word: "puts", inverted: true, long: "putsLong", short: "putsShort" },
+];
+// Below this the book is too thin for a ratio to mean anything (DII barely
+// trades index options, and a few hundred contracts produce four-digit
+// percentages). Conviction reads "—" there rather than a fake number.
+const DF_MIN_BOOK = 1000;
+// The table lists participants in a FIXED order — smart money first, retail last
+// — so a row never moves between days. (It used to re-sort by |Δ|, which made
+// the same participant jump around and defeated day-to-day comparison.)
+const DF_ROW_ORDER = ["FII", "Pro", "DII", "Client"];
 
-  const N = data.dates.length;
-  const active = hover ?? N - 1;
-
-  // panel bands, top→bottom: NIFTY close, then the three instrument panels —
-  // whose series are chosen by `mode` (net / gross long / gross short).
-  const bandDefs = [
-    { kind: "nifty" as const, label: "NIFTY 50 close", unit: "pts" },
-    ...insts.map((ins) => ({ kind: "inst" as const, ins, label: ins.label, unit: "contracts" })),
-  ];
-
-  // geometry — generous gaps so a panel's title never collides with the lines above.
-  // Inline: fixed band heights. Full-screen (tall): DISTRIBUTE the measured box
-  // height across the bands so the whole chart fits the viewport with no scroll.
-  const padL = 12;
-  const padR = 12;
-  const gap = tall ? 34 : 32;
-  const axisH = 30;
-  const top0 = 16;
-  const nBands = bandDefs.length;
-  let bandHeights: number[];
-  if (tall && availH > 0) {
-    const chrome = top0 + axisH + gap * (nBands - 1);
-    const avail = Math.max(160, availH - chrome);
-    const ratios = bandDefs.map((b) => (b.kind === "nifty" ? 1.2 : 1)); // NIFTY panel a touch taller
-    const rsum = ratios.reduce((a, b) => a + b, 0);
-    bandHeights = ratios.map((r) => (avail * r) / rsum);
-  } else {
-    bandHeights = bandDefs.map((b) => (b.kind === "nifty" ? (tall ? 240 : 150) : tall ? 230 : 128));
-  }
-  let cur = top0;
-  const bands = bandDefs.map((b, i) => {
-    const top = cur;
-    const bottom = cur + bandHeights[i];
-    cur = bottom + gap;
-    return { ...b, top, bottom };
-  });
-  const chartBottom = bands[bands.length - 1].bottom;
-  const height = chartBottom + axisH;
-  const plotL = padL;
-  const plotR = Math.max(padL + 1, width - padR);
-  const plotW = plotR - plotL;
-  const xOf = (i: number) => plotL + (N <= 1 ? 0 : (i / (N - 1)) * plotW);
-
-  // per-panel y-scale. NIFTY: its own range. Instrument panels: min/max across
-  // ALL FOUR participants for that instrument, always including the zero line.
-  const scales = bands.map((b) => {
-    let vals: number[];
-    if (b.kind === "nifty") {
-      vals = data.nifty.filter((v): v is number => v !== null);
-    } else {
-      vals = [];
-      for (const p of PV_PARTICIPANTS) {
-        for (const v of data.participants[p][b.ins.key]) if (v !== null) vals.push(v);
-      }
-    }
-    let lo = vals.length ? Math.min(...vals) : 0;
-    let hi = vals.length ? Math.max(...vals) : 1;
-    // Nets straddle zero, so the zero line must stay in view. Gross long/short
-    // legs are always positive and large — forcing zero in would crush every
-    // day-to-day move into a sliver at the top of the band, so we let those
-    // panels auto-range tight around the actual values.
-    if (b.kind === "inst" && zeroBased) {
-      lo = Math.min(lo, 0);
-      hi = Math.max(hi, 0);
-    }
-    if (hi === lo) hi = lo + 1;
-    const range = hi - lo;
-    lo -= range * 0.12;
-    hi += range * 0.14; // top headroom below the title band
-    const yOf = (v: number) => b.bottom - ((v - lo) / (hi - lo)) * (b.bottom - b.top);
-    return { yOf };
-  });
-
-  const onMove = (e: React.MouseEvent) => {
-    if (!svgRef.current || N < 2) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    let i = Math.round(((px - plotL) / plotW) * (N - 1));
-    i = Math.max(0, Math.min(N - 1, i));
-    setHover(i);
-  };
-
-  const thursdays = data.expiry.map((e, i) => (e ? i : -1)).filter((i) => i >= 0);
-  const ticks: number[] = [];
-  const step = Math.max(1, Math.round(N / 8));
-  for (let i = 0; i < N; i += step) ticks.push(i);
-  if (ticks[ticks.length - 1] !== N - 1) ticks.push(N - 1);
-
-  const niftyClose = data.nifty[active];
-
-  return (
-    <div className="w-full" style={tall ? { height: "100%", display: "flex", flexDirection: "column" } : undefined}>
-      {/* live readout — date + NIFTY, plus a per-participant net matrix that
-          doubles as the legend (in the header, never over the lines) */}
-      <div className="mb-4">
-        <div className="text-base text-left" style={{ fontFamily: "'DM Mono', monospace" }}>
-          <span style={{ color: INK, fontWeight: 600 }}>{data.dateDisplay[active]}</span>
-          <span style={{ color: MUTED }}>
-            {" · "}
-            {data.day[active]}
-            {data.expiry[active] ? " · expiry" : ""}
-            {hover === null ? " · latest" : ""}
-          </span>
-        </div>
-        <div className="inline-flex items-baseline gap-2 justify-center w-full mt-1.5">
-          <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
-            NIFTY 50
-          </span>
-          <span
-            className="text-base md:text-lg font-semibold"
-            style={{ fontFamily: "'DM Mono', monospace", color: TEAL }}
-          >
-            {niftyClose === null ? "—" : priceStr(niftyClose)}
-          </span>
-        </div>
-      </div>
-
-      {/* legend + live per-participant nets — two columns × two rows, centred.
-          grid-flow-col + two rows fills column-first: FII/DII left, Client/Pro right.
-          Each participant is a FIXED-SIZE padded container, and every figure sits in
-          a fixed-width slot so the longest value can neither overlap the next cell
-          nor overflow its own column. */}
-      <div className="mb-5 w-full overflow-x-auto shrink-0">
-        <div className="grid grid-rows-2 grid-flow-col gap-3 mx-auto w-fit">
-          {PV_PARTICIPANTS.map((p) => {
-            const s = data.participants[p];
-            // nets carry a sign (direction is the point); gross legs never do —
-            // a "+" in front of a long leg would misread as a one-day increase.
-            const cell = (v: number | null) => (v === null ? "—" : zeroBased ? signed(v) : fmt(v));
-            const stat = (key: string, label: string, v: number | null) => (
-              <span key={key} className="flex flex-col items-center leading-tight shrink-0" style={{ width: 78 }}>
-                <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
-                  {label}
-                </span>
-                <span
-                  className="text-sm font-bold whitespace-nowrap"
-                  style={{ fontFamily: "'DM Mono', monospace", color: INK }}
-                >
-                  {cell(v)}
-                </span>
-              </span>
-            );
-            return (
-              <div
-                key={p}
-                className="flex items-center gap-2 rounded-lg border border-border px-4 py-2.5"
-                style={{ background: "#FBFAF7" }}
-              >
-                <span
-                  className="inline-flex items-center gap-2 font-semibold shrink-0"
-                  style={{ color: INK, fontFamily: "'DM Sans', sans-serif", width: 58 }}
-                >
-                  <span style={{ width: 15, height: 15, borderRadius: 4, background: PV_COLORS[p], display: "inline-block" }} />
-                  {p}
-                </span>
-                <div className="flex items-baseline gap-1">
-                  {insts.map((ins) => stat(ins.key, ins.chip, s[ins.key][active]))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div
-        ref={boxRef}
-        className="w-full"
-        style={tall ? { position: "relative", flex: "1 1 0", minHeight: 0, overflow: "hidden" } : { position: "relative" }}
-      >
-        {width > 0 && (
-          <svg
-            ref={svgRef}
-            width={width}
-            height={height}
-            style={{ display: "block", touchAction: "none" }}
-            onMouseMove={onMove}
-            onMouseLeave={() => setHover(null)}
-          >
-            {/* faint Thursday (weekly-expiry) verticals across all panels */}
-            {thursdays.map((i) => (
-              <line
-                key={"t" + i}
-                x1={xOf(i)}
-                x2={xOf(i)}
-                y1={bands[0].top}
-                y2={chartBottom}
-                stroke={MUTED}
-                strokeWidth={0.6}
-                opacity={0.14}
-              />
-            ))}
-
-            {bands.map((b, bi) => {
-              const sc = scales[bi];
-              return (
-                <g key={b.label}>
-                  {/* panel title — sits in its own band, above the plot area */}
-                  <text x={plotL + 1} y={b.top - 5} fontSize={12} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
-                    {b.label} <tspan fill="#C8C3B8">· {b.unit}</tspan>
-                  </text>
-
-                  {b.kind === "nifty" ? (
-                    <>
-                      {pvSegments(data.nifty, xOf, sc.yOf).map((pts, si) => (
-                        <polyline key={si} points={pts} fill="none" stroke={TEAL} strokeWidth={1.8} strokeLinejoin="round" />
-                      ))}
-                      {niftyClose !== null && (
-                        <circle cx={xOf(active)} cy={sc.yOf(niftyClose)} r={3.5} fill={TEAL} stroke="#FFFFFF" strokeWidth={1.2} />
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {/* zero baseline — only meaningful for the nets; a gross
-                          long/short panel never reaches zero, so it's omitted */}
-                      {zeroBased && (
-                        <line x1={plotL} x2={plotR} y1={sc.yOf(0)} y2={sc.yOf(0)} stroke={MUTED} strokeWidth={1} opacity={0.5} />
-                      )}
-                      {PV_PARTICIPANTS.map((p) => {
-                        const series = data.participants[p][b.ins.key];
-                        const v = series[active];
-                        return (
-                          <g key={p}>
-                            {pvSegments(series, xOf, sc.yOf).map((pts, si) => (
-                              <polyline
-                                key={si}
-                                points={pts}
-                                fill="none"
-                                stroke={PV_COLORS[p]}
-                                strokeWidth={1.5}
-                                strokeLinejoin="round"
-                              />
-                            ))}
-                            {v !== null && (
-                              <circle cx={xOf(active)} cy={sc.yOf(v)} r={3} fill={PV_COLORS[p]} stroke="#FFFFFF" strokeWidth={1.1} />
-                            )}
-                          </g>
-                        );
-                      })}
-                    </>
-                  )}
-                </g>
-              );
-            })}
-
-            {/* the crosshair — one vertical line spanning every panel */}
-            <line
-              x1={xOf(active)}
-              x2={xOf(active)}
-              y1={bands[0].top}
-              y2={chartBottom}
-              stroke={INK}
-              strokeWidth={1}
-              opacity={hover === null ? 0.28 : 0.55}
-              strokeDasharray="3 3"
-            />
-
-            {/* x-axis date ticks (categorical: exact trading days, no weekends) */}
-            {ticks.map((i) => (
-              <text
-                key={"x" + i}
-                x={xOf(i)}
-                y={chartBottom + 16}
-                fontSize={12}
-                fill={MUTED}
-                textAnchor="middle"
-                style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}
-              >
-                {data.dateDisplay[i].slice(0, 6)}
-              </text>
-            ))}
-          </svg>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** "Who derived the move" — Index Futures. Reuses the participants_vs_nifty data
- *  (net-position lines as CONTEXT), adds a per-day "who drove" ribbon, and below
- *  a Δ-ranked driver/absorber table with conviction + persistence. Pure render;
- *  hover state is lifted to the parent so the inline card and the full-screen
- *  overlay stay perfectly in sync (same idiom as ParticipantsNiftyChart). */
+/** "Who derived the move" for one index instrument. Reuses the
+ *  participants_vs_nifty data (net-position lines as CONTEXT), adds a per-day
+ *  "who drove" ribbon, and below a driver/absorber table with conviction +
+ *  persistence. Pure render; hover state is lifted to the parent so the inline
+ *  card and the full-screen overlay stay perfectly in sync. */
 function DriverFuturesChart({
   data,
   hover,
   setHover,
   tall,
+  instrument,
 }: {
   data: ParticipantsData;
   hover: number | null;
   setHover: (i: number | null) => void;
   tall?: boolean;
+  instrument: string;
 }) {
+  const I = DF_INSTRUMENTS.find((o) => o.key === instrument) ?? DF_INSTRUMENTS[0];
+  const IK = I.key;
+  const dirOf = (d: number) => (I.inverted ? -d : d); // directional reading of a raw Δ
   const [width, setWidth] = useState(0);
   const [availH, setAvailH] = useState(0); // measured plot-box height (for full-screen fit)
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -955,18 +493,19 @@ function DriverFuturesChart({
       const up = move > 0;
       let best: { key: string; delta: number } | null = null;
       for (const p of PV_PARTICIPANTS) {
-        const v = data.participants[p].futures[i];
-        const pv = data.participants[p].futures[i - 1];
+        const v = data.participants[p][IK][i];
+        const pv = data.participants[p][IK][i - 1];
         if (v === null || pv === null) continue;
         const d = v - pv;
-        if (up ? d > 0 : d < 0) {
+        // compare on the DIRECTIONAL delta (puts invert), rank on the raw size
+        if (up ? dirOf(d) > 0 : dirOf(d) < 0) {
           if (!best || Math.abs(d) > Math.abs(best.delta)) best = { key: p, delta: d };
         }
       }
       if (best) arr[i] = best;
     }
     return arr;
-  }, [data, N]);
+  }, [data, N, IK, I.inverted]);
 
   const persistenceAt = (i: number) => {
     if (!drivers[i]) return 0;
@@ -983,29 +522,36 @@ function DriverFuturesChart({
     active > 0 && data.nifty[active] !== null && data.nifty[active - 1] !== null
       ? (data.nifty[active] as number) - (data.nifty[active - 1] as number)
       : null;
-  const rows = PV_PARTICIPANTS.map((p) => {
-    const v = data.participants[p].futures[active];
-    const pv = active > 0 ? data.participants[p].futures[active - 1] : null;
-    const d = v !== null && pv !== null ? v - pv : null;
-    const conv = d !== null && v !== null && v !== 0 ? (Math.abs(d) / Math.abs(v)) * 100 : null;
-    return { p, v, d, conv };
-  }).sort((a, b) => Math.abs(b.d ?? 0) - Math.abs(a.d ?? 0));
+  // Fixed row order — no re-sorting, so a participant holds its row every day.
+  // Conviction denominator = the participant's GROSS book in this instrument.
+  const bookAt = (p: string, i: number) => {
+    const l = data.participants[p][I.long][i];
+    const s = data.participants[p][I.short][i];
+    return l === null || s === null ? null : l + s;
+  };
+  const convOf = (d: number | null, book: number | null) =>
+    d === null || book === null || book < DF_MIN_BOOK ? null : (Math.abs(d) / book) * 100;
+  const rows = DF_ROW_ORDER.map((p) => {
+    const v = data.participants[p][IK][active];
+    const prev = active > 0 ? data.participants[p][IK][active - 1] : null;
+    const d = v !== null && prev !== null ? v - prev : null;
+    return { p, v, prev, d, conv: convOf(d, bookAt(p, active)) };
+  });
   const driver = drivers[active];
   const absorber = (() => {
     if (!driver || move === null) return null;
     const up = move > 0;
     let best: { key: string; d: number } | null = null;
     for (const p of PV_PARTICIPANTS) {
-      const v = data.participants[p].futures[active];
-      const pv = data.participants[p].futures[active - 1];
+      const v = data.participants[p][IK][active];
+      const pv = data.participants[p][IK][active - 1];
       if (v === null || pv === null) continue;
       const d = v - pv;
-      if (up ? d < 0 : d > 0) if (!best || Math.abs(d) > Math.abs(best.d)) best = { key: p, d };
+      if (up ? dirOf(d) < 0 : dirOf(d) > 0) if (!best || Math.abs(d) > Math.abs(best.d)) best = { key: p, d };
     }
     return best?.key ?? null;
   })();
-  const drvConv =
-    driver ? (Math.abs(driver.delta) / Math.abs(data.participants[driver.key].futures[active] as number)) * 100 : null;
+  const drvConv = driver ? convOf(driver.delta, bookAt(driver.key, active)) : null;
   const convWord = (c: number | null) => (c === null ? "" : c >= 8 ? "high conviction" : c >= 3 ? "moderate" : "low — inertia");
   const per = persistenceAt(active);
 
@@ -1056,7 +602,7 @@ function DriverFuturesChart({
   let flo = 0;
   let fhi = 0;
   for (const p of PV_PARTICIPANTS)
-    for (const v of data.participants[p].futures)
+    for (const v of data.participants[p][IK])
       if (v !== null) {
         if (v < flo) flo = v;
         if (v > fhi) fhi = v;
@@ -1093,7 +639,7 @@ function DriverFuturesChart({
     marginLeft: 8,
     textTransform: "uppercase",
     background: good ? "rgba(21,138,78,0.14)" : "rgba(192,54,44,0.12)",
-    color: good ? "#0F6B3C" : "#9C2C23",
+    color: good ? "var(--ink-bull)" : "var(--ink-bear)",
   });
   const num = (v: number) => v.toLocaleString("en-US");
   const sgn = (v: number) => (v > 0 ? "+" : "−") + Math.abs(Math.round(v)).toLocaleString("en-US");
@@ -1148,7 +694,7 @@ function DriverFuturesChart({
       {/* legend */}
       <div
         className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs shrink-0"
-        style={{ fontFamily: "'DM Mono', monospace", color: "#4A4740" }}
+        style={{ fontFamily: "'DM Mono', monospace", color: "var(--ink-soft)" }}
       >
         {PV_PARTICIPANTS.map((p) => (
           <span key={p} className="inline-flex items-center gap-2">
@@ -1180,22 +726,22 @@ function DriverFuturesChart({
 
             {/* NIFTY panel */}
             <text x={plotL + 1} y={niftyTop - 5} fontSize={12} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
-              NIFTY 50 close <tspan fill="#C8C3B8">· pts</tspan>
+              NIFTY 50 close <tspan fill="var(--hairline)">· pts</tspan>
             </text>
             {pvSegments(data.nifty, xOf, nY).map((pts, si) => (
               <polyline key={"n" + si} points={pts} fill="none" stroke={TEAL} strokeWidth={1.8} strokeLinejoin="round" />
             ))}
             {niftyClose !== null && (
-              <circle cx={xOf(active)} cy={nY(niftyClose)} r={3.5} fill={TEAL} stroke="#FFFFFF" strokeWidth={1.2} />
+              <circle cx={xOf(active)} cy={nY(niftyClose)} r={3.5} fill={TEAL} stroke="var(--surface-card)" strokeWidth={1.2} />
             )}
 
             {/* Futures net panel (context) */}
             <text x={plotL + 1} y={futTop - 5} fontSize={12} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
-              Net index futures <tspan fill="#C8C3B8">· contracts (position)</tspan>
+              {I.panel} <tspan fill="var(--hairline)">· contracts (position)</tspan>
             </text>
             <line x1={plotL} x2={plotR} y1={fY(0)} y2={fY(0)} stroke={MUTED} strokeWidth={1} opacity={0.5} />
             {PV_PARTICIPANTS.map((p) => {
-              const series = data.participants[p].futures;
+              const series = data.participants[p][IK];
               const v = series[active];
               const isDrv = driver?.key === p;
               return (
@@ -1209,7 +755,7 @@ function DriverFuturesChart({
                       cy={fY(v)}
                       r={isDrv ? 4.6 : 3}
                       fill={PV_COLORS[p]}
-                      stroke="#FFFFFF"
+                      stroke="var(--surface-card)"
                       strokeWidth={isDrv ? 1.5 : 1.1}
                     />
                   )}
@@ -1219,7 +765,7 @@ function DriverFuturesChart({
 
             {/* Driver ribbon — each day coloured by its driver; streak = persistence */}
             <text x={plotL + 1} y={ribbonTop - 5} fontSize={12} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
-              Who drove that day <tspan fill="#C8C3B8">· flow</tspan>
+              Who drove that day <tspan fill="var(--hairline)">· flow</tspan>
             </text>
             {data.dates.map((_, i) => {
               const dv = drivers[i];
@@ -1230,7 +776,7 @@ function DriverFuturesChart({
                   y={ribbonTop}
                   width={cellW + 0.6}
                   height={ribbonH}
-                  fill={dv ? PV_COLORS[dv.key] : "#ECEAE4"}
+                  fill={dv ? PV_COLORS[dv.key] : "var(--surface-inset)"}
                   opacity={dv ? 0.85 : 0.5}
                 />
               );
@@ -1275,13 +821,14 @@ function DriverFuturesChart({
         )}
       </div>
 
-      {/* Δ-ranked table + the verdict */}
+      {/* participant table (FIXED order — rows never reshuffle) + the verdict */}
       <div className="mt-4 md:mt-6 grid gap-5 shrink-0" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-        <div className="rounded-xl border border-border overflow-x-auto" style={{ background: "#FFFFFF" }}>
+        <div className="rounded-xl border border-border overflow-x-auto" style={{ background: "var(--surface-card)" }}>
           <table className="w-full text-xs" style={{ fontFamily: "'DM Mono', monospace", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ color: MUTED }}>
                 <th className="text-left font-normal px-4 py-2.5">Participant</th>
+                <th className="text-right font-normal px-3 py-2.5">Prev net</th>
                 <th className="text-right font-normal px-3 py-2.5">Net</th>
                 <th className="text-right font-normal px-3 py-2.5">Δ 1-day</th>
                 <th className="text-right font-normal px-4 py-2.5">Conv.</th>
@@ -1301,6 +848,9 @@ function DriverFuturesChart({
                         {isDrv && <span style={pill(true)}>drove</span>}
                         {isAbs && <span style={pill(false)}>absorbed</span>}
                       </span>
+                    </td>
+                    <td className="text-right px-3 py-2.5" style={{ color: MUTED }}>
+                      {r.prev === null ? "—" : num(r.prev)}
                     </td>
                     <td className="text-right px-3 py-2.5" style={{ color: INK }}>
                       {r.v === null ? "—" : num(r.v)}
@@ -1327,7 +877,7 @@ function DriverFuturesChart({
           </table>
         </div>
 
-        <div className="rounded-xl border border-border px-5 py-4" style={{ background: "#FCFBF9" }}>
+        <div className="rounded-xl border border-border px-5 py-4" style={{ background: "var(--surface-subtle)" }}>
           {!driver || move === null ? (
             <p className="text-xs leading-relaxed" style={{ color: MUTED, fontFamily: "'DM Mono', monospace" }}>
               No driver read for this day — it needs a previous trading day and a non-flat NIFTY move.
@@ -1343,13 +893,15 @@ function DriverFuturesChart({
               </p>
               <div
                 className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs"
-                style={{ fontFamily: "'DM Mono', monospace", color: "#4A4740" }}
+                style={{ fontFamily: "'DM Mono', monospace", color: "var(--ink-soft)" }}
               >
                 <span>
                   Δ <b style={{ color: INK }}>{sgn(driver.delta)}</b>
                 </span>
                 <span>
-                  conviction <b style={{ color: INK }}>{drvConv!.toFixed(1)}%</b> ({convWord(drvConv)})
+                  conviction{" "}
+                  <b style={{ color: INK }}>{drvConv === null ? "—" : drvConv.toFixed(1) + "%"}</b>
+                  {drvConv === null ? " (book too thin to rate)" : ` (${convWord(drvConv)})`}
                 </span>
                 <span>
                   persistence <b style={{ color: INK }}>{per} day{per > 1 ? "s" : ""}</b>
@@ -1360,9 +912,14 @@ function DriverFuturesChart({
                   </span>
                 )}
               </div>
-              <p className="mt-3 text-xs leading-relaxed" style={{ color: "#B0AB9E" }}>
-                Driver = biggest 1-day Δ that agrees with the price move; absorber = biggest against it. Conviction = Δ ÷
-                the participant&apos;s own book. A positioning read, not proven causation; expiry days are rollover-distorted.
+              <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+                Driver = biggest 1-day Δ in index {I.word} that agrees with the price move; absorber = biggest against it.
+                {I.inverted
+                  ? " Puts read inverted: building net long puts is a bearish bet, so a put build-up agrees with a fall."
+                  : ""}{" "}
+                Conviction = Δ ÷ the participant&apos;s <em>gross</em> book (long + short legs) in that instrument — dividing
+                by the net would explode on options, where the net is a small difference between two very large legs.
+                A positioning read, not proven causation; expiry days are rollover-distorted.
               </p>
             </>
           )}
@@ -1372,279 +929,95 @@ function DriverFuturesChart({
   );
 }
 
-/** Stacked-panel chart with ONE crosshair spanning every panel, driven by real
- *  data. Renders nothing but a note if the data can't be loaded. */
-function FiiNiftyChart({ participant }: { participant: string }) {
-  const [data, setData] = useState<FiiNiftyData | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [hover, setHover] = useState<number | null>(null);
-  const [width, setWidth] = useState(0);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    fetch("/data/fii_vs_nifty.json", { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      })
-      .then((d: FiiNiftyData) => {
-        if (!alive) return;
-        if (!d || !Array.isArray(d.points) || d.points.length < 2) throw new Error("empty");
-        setData(d);
-      })
-      .catch(() => alive && setFailed(true));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const measure = () => setWidth(el.clientWidth);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [data]);
-
-  // "if can't load the data, don't show it" — a quiet note, never a fake chart.
-  if (failed) {
-    return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
-        Live chart data unavailable. Generate it with{" "}
-        <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
-      </div>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
-        Loading chart…
-      </div>
-    );
-  }
-
-  const pts = data.points;
-  const N = pts.length;
-  // a panel's value = NIFTY close (top panel) or the SELECTED participant's net
-  const valAt = (p: PricePoint, b: { sub: "fut" | "call" | "put" | null }) =>
-    b.sub === null ? p.close : p.nets[participant][b.sub];
-
-  // geometry — roomier bands + wider gaps for breathing space
-  const padL = 12;
-  const padR = 12;
-  const gap = 28;
-  const axisH = 30;
-  const top0 = 16;
-  const bands = PANELS.map((p) => ({ ...p, top: 0, bottom: 0 }));
-  let cur = top0;
-  for (const b of bands) {
-    b.top = cur;
-    b.bottom = cur + b.h;
-    cur = b.bottom + gap;
-  }
-  const chartBottom = bands[bands.length - 1].bottom;
-  const height = chartBottom + axisH;
-  const plotL = padL;
-  const plotR = Math.max(padL + 1, width - padR);
-  const plotW = plotR - plotL;
-  const xOf = (i: number) => plotL + (N <= 1 ? 0 : (i / (N - 1)) * plotW);
-
-  // per-panel y scale (net panels always include 0)
-  const scales = bands.map((b) => {
-    const vals = pts.map((p) => valAt(p, b));
-    let lo = Math.min(...vals);
-    let hi = Math.max(...vals);
-    if (b.net) {
-      lo = Math.min(lo, 0);
-      hi = Math.max(hi, 0);
-    }
-    if (hi === lo) hi = lo + 1;
-    const range = hi - lo;
-    lo -= range * 0.1;
-    hi += range * 0.26; // extra top headroom so the line clears the panel label
-    const yOf = (v: number) => b.bottom - ((v - lo) / (hi - lo)) * (b.bottom - b.top);
-    return { yOf };
-  });
-
-  const active = hover ?? N - 1;
-  const ap = pts[active];
-
-  const onMove = (e: React.MouseEvent) => {
-    if (!svgRef.current || N < 2) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    let i = Math.round(((px - plotL) / plotW) * (N - 1));
-    i = Math.max(0, Math.min(N - 1, i));
-    setHover(i);
-  };
-
-  const thursdays = pts.map((p, i) => (p.expiry ? i : -1)).filter((i) => i >= 0);
-  const ticks: number[] = [];
-  const step = Math.max(1, Math.round(N / 8));
-  for (let i = 0; i < N; i += step) ticks.push(i);
-  if (ticks[ticks.length - 1] !== N - 1) ticks.push(N - 1);
-
-  return (
-    <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "#FFFFFF" }}>
-      {/* live readout — updates to the hovered day (falls back to the latest) */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 mb-5">
-        <div className="text-base" style={{ fontFamily: "'DM Mono', monospace" }}>
-          <span style={{ color: INK, fontWeight: 600 }}>{ap.dateDisplay}</span>
-          <span style={{ color: MUTED }}>
-            {" · "}
-            {ap.day}
-            {ap.expiry ? " · expiry" : ""}
-            {hover === null ? " · latest" : ""}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-x-5 gap-y-1.5">
-          {[
-            { label: "NIFTY 50", val: priceStr(ap.close), color: TEAL },
-            { label: "Net futures", val: signed(ap.nets[participant].fut), color: "#D97706" },
-            { label: "Net calls", val: signed(ap.nets[participant].call), color: RED },
-            { label: "Net puts", val: signed(ap.nets[participant].put), color: GREEN },
-          ].map((s) => (
-            <div key={s.label} className="flex flex-col leading-tight">
-              <span className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>
-                {s.label}
-              </span>
-              <span className="text-base md:text-lg font-semibold" style={{ fontFamily: "'DM Mono', monospace", color: s.color }}>
-                {s.val}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div ref={boxRef} className="w-full" style={{ position: "relative" }}>
-        {width > 0 && (
-          <svg
-            ref={svgRef}
-            width={width}
-            height={height}
-            style={{ display: "block", touchAction: "none" }}
-            onMouseMove={onMove}
-            onMouseLeave={() => setHover(null)}
-          >
-            {/* faint Thursday (weekly-expiry) verticals across all panels */}
-            {thursdays.map((i) => (
-              <line
-                key={"t" + i}
-                x1={xOf(i)}
-                x2={xOf(i)}
-                y1={bands[0].top}
-                y2={chartBottom}
-                stroke={MUTED}
-                strokeWidth={0.6}
-                opacity={0.16}
-              />
-            ))}
-
-            {bands.map((b, bi) => {
-              const sc = scales[bi];
-              const line = pts.map((p, i) => `${xOf(i)},${sc.yOf(valAt(p, b))}`).join(" ");
-              const baseY = b.net ? sc.yOf(0) : b.bottom;
-              const area =
-                `M ${xOf(0)},${baseY} ` +
-                pts.map((p, i) => `L ${xOf(i)},${sc.yOf(valAt(p, b))}`).join(" ") +
-                ` L ${xOf(N - 1)},${baseY} Z`;
-              return (
-                <g key={b.label}>
-                  {/* panel label */}
-                  <text x={plotL + 1} y={b.top + 11} fontSize={12} fill={MUTED} style={{ fontFamily: "'DM Sans', sans-serif" }}>
-                    {b.label} <tspan fill="#C8C3B8">· {b.unit}</tspan>
-                  </text>
-                  {/* zero baseline on net panels */}
-                  {b.net && (
-                    <line x1={plotL} x2={plotR} y1={sc.yOf(0)} y2={sc.yOf(0)} stroke={MUTED} strokeWidth={1} opacity={0.5} />
-                  )}
-                  <path d={area} fill={b.color} opacity={0.1} />
-                  <polyline points={line} fill="none" stroke={b.color} strokeWidth={1.6} strokeLinejoin="round" />
-                  {/* crosshair dot for this panel */}
-                  {hover !== null && (
-                    <circle cx={xOf(active)} cy={sc.yOf(valAt(ap, b))} r={3.5} fill={b.color} stroke="#FFFFFF" strokeWidth={1.2} />
-                  )}
-                </g>
-              );
-            })}
-
-            {/* the crosshair — one vertical line spanning every panel */}
-            {hover !== null && (
-              <line
-                x1={xOf(active)}
-                x2={xOf(active)}
-                y1={bands[0].top}
-                y2={chartBottom}
-                stroke={INK}
-                strokeWidth={1}
-                opacity={0.55}
-                strokeDasharray="3 3"
-              />
-            )}
-
-            {/* x-axis date ticks (categorical: exact trading days, no weekends) */}
-            {ticks.map((i) => (
-              <text
-                key={"x" + i}
-                x={xOf(i)}
-                y={chartBottom + 16}
-                fontSize={12}
-                fill={MUTED}
-                textAnchor="middle"
-                style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}
-              >
-                {pts[i].dateDisplay.slice(0, 6)}
-              </text>
-            ))}
-          </svg>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// One editorial PNG (matplotlib) per PARTICIPANT per instrument, each in its own
-// card. Built by plot_long_short.py → long_short_<instrument>_<participant>_<date>.png
-// (4 participants × 3 instruments = 12 cards).
-const LONG_SHORT_DATE = "2026-07-20";
-const LS_INSTRUMENTS = [
-  { key: "futures", label: "Index Futures" },
-  { key: "calls", label: "Index Calls" },
-  { key: "puts", label: "Index Puts" },
+// §1 — one long-vs-short balance card per PARTICIPANT, drawn as inline SVG from
+// the SAME participants_vs_nifty.json the other sections read. It used to be 12
+// matplotlib PNGs (long_short_<inst>_<participant>_<date>.png) frozen on one
+// date: a bitmap can't follow the theme toggle, and it went stale the moment the
+// scraper ran. Both problems disappear by drawing it here — colours resolve
+// through --bar-long / --bar-short, and the date is always the file's last day.
+const LS_INSTRUMENTS: { key: string; label: string; long: keyof ParticipantSeries; short: keyof ParticipantSeries }[] = [
+  { key: "futures", label: "Index Futures", long: "futuresLong", short: "futuresShort" },
+  { key: "calls", label: "Index Calls", long: "callsLong", short: "callsShort" },
+  { key: "puts", label: "Index Puts", long: "putsLong", short: "putsShort" },
 ];
 const LS_ACTORS = ["Client", "DII", "FII", "Pro"];
 
-function ParticipantCard({ instKey, actor, label }: { instKey: string; actor: string; label: string }) {
-  const [ok, setOk] = useState(true);
+/** Compact figures for the raw contract counts above each bar: 2.2L / 65,941. */
+function lsCount(v: number): string {
+  if (v >= 100000) return (v / 100000).toFixed(v >= 1000000 ? 0 : 1) + "L";
+  return v.toLocaleString("en-US");
+}
+
+/** One participant's long-vs-short split, normalised to 100%. Fixed viewBox, so
+ *  it scales with its card without measuring anything. */
+function ParticipantCard({ actor, long, short }: { actor: string; long: number | null; short: number | null }) {
+  const total = (long ?? 0) + (short ?? 0);
+  const has = long !== null && short !== null && total > 0;
+  const lp = has ? ((long as number) / total) * 100 : 0;
+  const sp = has ? 100 - lp : 0;
+  // plot band: y=150 is 0%, y=34 is 100%
+  const y0 = 150;
+  const yOf = (pct: number) => y0 - (pct / 100) * (y0 - 34);
+  const bar = (x: number, pct: number, fill: string) => (
+    <rect x={x} y={yOf(pct)} width={52} height={Math.max(0, y0 - yOf(pct))} fill={fill} />
+  );
   return (
-    <div className="rounded-2xl border border-border p-3" style={{ background: "#FFFFFF" }}>
-      {ok ? (
-        <img
-          src={`/long_short_${instKey}_${actor.toLowerCase()}_${LONG_SHORT_DATE}.png`}
-          alt={`${actor} — ${label} long-vs-short balance on ${LONG_SHORT_DATE}.`}
-          className="w-full h-auto rounded-lg"
-          onError={() => setOk(false)}
-        />
-      ) : (
+    <div className="rounded-2xl border border-border p-3" style={{ background: "var(--surface-card)" }}>
+      <p className="text-center text-base font-bold mb-1" style={{ color: INK, fontFamily: "'DM Sans', sans-serif" }}>
+        {actor}
+      </p>
+      {!has ? (
         <div className="px-2 py-10 text-center text-xs" style={{ color: MUTED }}>
-          {actor} unavailable — run{" "}
-          <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_long_short.py</code>.
+          No open interest recorded.
         </div>
+      ) : (
+        <svg viewBox="0 0 230 186" className="w-full h-auto" role="img" aria-label={`${actor}: ${lp.toFixed(0)}% long, ${sp.toFixed(0)}% short.`}>
+          {/* gridlines + axis ticks at 0 / 50 / 100 */}
+          {[0, 50, 100].map((g) => (
+            <g key={g}>
+              <line x1={40} x2={222} y1={yOf(g)} y2={yOf(g)} stroke={GRID} strokeWidth={1} />
+              <text x={34} y={yOf(g) + 4} fontSize={11} fill={MUTED} textAnchor="end" style={{ fontFamily: "'DM Mono', monospace" }}>
+                {g}
+              </text>
+            </g>
+          ))}
+          {bar(62, lp, "var(--bar-long)")}
+          {bar(148, sp, "var(--bar-short)")}
+          {[
+            { x: 88, pct: lp, raw: long as number, label: "Long" },
+            { x: 174, pct: sp, raw: short as number, label: "Short" },
+          ].map((b) => (
+            <g key={b.label}>
+              <text x={b.x} y={yOf(b.pct) - 20} fontSize={10} fill={MUTED} textAnchor="middle" style={{ fontFamily: "'DM Mono', monospace" }}>
+                {lsCount(b.raw)}
+              </text>
+              <text x={b.x} y={yOf(b.pct) - 6} fontSize={15} fontWeight={700} fill={INK} textAnchor="middle" style={{ fontFamily: "'DM Mono', monospace" }}>
+                {b.pct.toFixed(0)}%
+              </text>
+              <text x={b.x} y={172} fontSize={13} fill={INK} textAnchor="middle" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+                {b.label}
+              </text>
+            </g>
+          ))}
+        </svg>
       )}
     </div>
   );
 }
 
-function LongShortChart({ instrument }: { instrument: string }) {
+function LongShortChart({ data, instrument }: { data: ParticipantsData; instrument: string }) {
   const inst = LS_INSTRUMENTS.find((i) => i.key === instrument) ?? LS_INSTRUMENTS[0];
+  const i = data.dates.length - 1; // always the latest day in the file
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
       {LS_ACTORS.map((a) => (
-        <ParticipantCard key={a} instKey={inst.key} actor={a} label={inst.label} />
+        <ParticipantCard
+          key={a}
+          actor={a}
+          long={data.participants[a]?.[inst.long]?.[i] ?? null}
+          short={data.participants[a]?.[inst.short]?.[i] ?? null}
+        />
       ))}
     </div>
   );
@@ -1666,7 +1039,7 @@ function SectionHeader({
     <div className="flex items-start gap-4">
       <span
         className="shrink-0 flex items-center justify-center rounded-full text-sm font-bold mt-0.5"
-        style={{ width: 34, height: 34, background: INK, color: "#FFFFFF", fontFamily: "'DM Mono', monospace" }}
+        style={{ width: 34, height: 34, background: INK, color: "var(--surface-page)", fontFamily: "'DM Mono', monospace" }}
       >
         {n}
       </span>
@@ -1708,10 +1081,10 @@ interface TueData {
 
 const TUE_ORDER = ["FII", "DII", "Pro", "Client"]; // table + legend order (matches the reference)
 const TUE_COLORS: Record<string, string> = {
-  FII: "#C0362C",
-  DII: "#0EA5A4",
-  Pro: "#D97706",
-  Client: "#2563EB",
+  FII: "#B08FE8",
+  DII: "#E8A33D",
+  Pro: "#4CC77C",
+  Client: "#3FA9F5",
 };
 const TUE_INSTRUMENTS: { key: string; label: string }[] = [
   { key: "futures", label: "Index Futures" },
@@ -1736,7 +1109,7 @@ function biasVisual(bias: string): { color: string; bg: string; strong: boolean 
   const bear = bias.includes("Bearish");
   return {
     color: bull ? GREEN : bear ? RED : MUTED,
-    bg: bull ? "#EBF6EF" : bear ? "#FBEEEC" : "#F2F1EE",
+    bg: bull ? "var(--tint-bull)" : bear ? "var(--tint-bear)" : "var(--tint-flat)",
     strong: bias.startsWith("Strong"),
   };
 }
@@ -1871,7 +1244,7 @@ function TuesdayLineChart({ rows }: { rows: TueRow[] }) {
             {hover !== null &&
               TUE_ORDER.map((a) =>
                 ar.net[a] == null ? null : (
-                  <circle key={"d" + a} cx={xOf(active)} cy={yOf(ar.net[a] as number)} r={3.5} fill={TUE_COLORS[a]} stroke="#FFFFFF" strokeWidth={1.2} />
+                  <circle key={"d" + a} cx={xOf(active)} cy={yOf(ar.net[a] as number)} r={3.5} fill={TUE_COLORS[a]} stroke="var(--surface-card)" strokeWidth={1.2} />
                 )
               )}
           </svg>
@@ -1906,7 +1279,7 @@ function TuesdaySection() {
 
   if (failed) {
     return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
         Tuesday summary unavailable — run{" "}
         <code style={{ fontFamily: "'DM Mono', monospace" }}>python export_tuesday_summary.py</code>.
       </div>
@@ -1914,7 +1287,7 @@ function TuesdaySection() {
   }
   if (!data) {
     return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
         Loading summary…
       </div>
     );
@@ -1941,15 +1314,15 @@ function TuesdaySection() {
         </p>
 
         {/* instrument toggle — drives both the table and the chart */}
-        <div className="inline-flex rounded-lg border border-border p-0.5 mt-4" style={{ background: "#EDECEA" }}>
+        <div className="inline-flex rounded-lg border border-border p-0.5 mt-4" style={{ background: "var(--surface-inset)" }}>
           {TUE_INSTRUMENTS.map((t) => (
             <button
               key={t.key}
               onClick={() => setInst(t.key)}
               className="px-3.5 py-1.5 rounded-md text-sm font-medium transition-all"
               style={{
-                background: inst === t.key ? "#FFFFFF" : "transparent",
-                color: inst === t.key ? INK : "#9E9A92",
+                background: inst === t.key ? "var(--surface-raised)" : "transparent",
+                color: inst === t.key ? INK : "var(--ink-muted)",
                 boxShadow: inst === t.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
               }}
             >
@@ -1960,11 +1333,11 @@ function TuesdaySection() {
       </div>
 
       {/* the table */}
-      <div className="rounded-2xl border border-border p-5 md:p-6" style={{ background: "#FFFFFF" }}>
+      <div className="rounded-2xl border border-border p-5 md:p-6" style={{ background: "var(--surface-card)" }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="border-b border-border" style={{ color: "#9E9A92" }}>
+              <tr className="border-b border-border" style={{ color: "var(--ink-muted)" }}>
                 <th className="text-left px-3 py-2.5 font-normal">Tuesday</th>
                 <th className="text-right px-3 py-2.5 font-normal">FII Δ</th>
                 <th className="text-right px-3 py-2.5 font-normal">DII Δ</th>
@@ -1983,7 +1356,7 @@ function TuesdaySection() {
                   <tr
                     key={r.date}
                     className="border-b border-border/40 last:border-0"
-                    style={latest ? { background: "#ECEBE7" } : undefined}
+                    style={latest ? { background: "var(--surface-inset)" } : undefined}
                   >
                     <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: INK }}>{r.display}</td>
                     {(["FII", "DII", "Pro", "Client"] as const).map((a) => (
@@ -2008,14 +1381,14 @@ function TuesdaySection() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs mt-4 pt-3 border-t border-border" style={{ color: "#B0AB9E" }}>
+        <p className="text-xs mt-4 pt-3 border-t border-border" style={{ color: "var(--ink-muted)" }}>
           Immediately answers: who changed the most (Winner) · who dominated · what the bias was.
           {inst === "puts" ? "  Puts: adding net long puts reads bearish, so the FII-Δ sign is inverted for bias." : ""}
         </p>
       </div>
 
       {/* the line chart — net levels of all four participants across the 12 Tuesdays */}
-      <div className="rounded-2xl border border-border p-5 md:p-6" style={{ background: "#FFFFFF" }}>
+      <div className="rounded-2xl border border-border p-5 md:p-6" style={{ background: "var(--surface-card)" }}>
         <p className="text-[20px] uppercase tracking-widest mb-3" style={{ color: MUTED }}>
           {cur.label} · net position by participant (12 Tuesdays)
         </p>
@@ -2071,7 +1444,7 @@ function ParticipantReport() {
 
   if (failed) {
     return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
         Participant report unavailable — run{" "}
         <code style={{ fontFamily: "'DM Mono', monospace" }}>python participant_report.py</code>.
       </div>
@@ -2079,7 +1452,7 @@ function ParticipantReport() {
   }
   if (!data) {
     return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
         Loading participant report…
       </div>
     );
@@ -2089,7 +1462,7 @@ function ParticipantReport() {
   const report = data.reports[activeDate];
 
   return (
-    <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "#FFFFFF" }}>
+    <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "var(--surface-card)" }}>
       {/* header: title + date, and the date picker */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <p className="text-sm" style={{ fontFamily: "'DM Mono', monospace", color: INK }}>
@@ -2100,7 +1473,7 @@ function ParticipantReport() {
           value={activeDate}
           onChange={(e) => setSel(e.target.value)}
           className="text-sm rounded-lg border border-border px-3 py-1.5"
-          style={{ fontFamily: "'DM Mono', monospace", color: INK, background: "#FFFFFF" }}
+          style={{ fontFamily: "'DM Mono', monospace", color: INK, background: "var(--surface-card)" }}
         >
           {[...data.dates].reverse().map((dd) => (
             <option key={dd} value={dd}>
@@ -2129,13 +1502,13 @@ function ParticipantReport() {
                 <tr
                   key={i}
                   className="border-b border-border/40 last:border-0"
-                  style={net ? { background: "#FBF7E8" } : undefined}
+                  style={net ? { background: "var(--tint-flat)" } : undefined}
                 >
                   <td
                     className="px-3 py-2 whitespace-nowrap"
                     style={{
                       fontFamily: "'DM Sans', sans-serif",
-                      color: net ? INK : "#4A4740",
+                      color: net ? INK : "var(--ink-soft)",
                       fontWeight: net ? 700 : 400,
                     }}
                   >
@@ -2145,7 +1518,7 @@ function ParticipantReport() {
                     const cell = row.cells[c];
                     return (
                       <td key={c} className="px-3 py-2 text-right whitespace-nowrap align-top">
-                        <div style={{ color: net ? INK : "#2E2B26", fontWeight: net ? 700 : 500 }}>
+                        <div style={{ color: net ? INK : "var(--ink-soft)", fontWeight: net ? 700 : 500 }}>
                           {cell && cell.v != null ? valStr(cell.v) : "—"}
                         </div>
                         {cell && cell.chg != null && (
@@ -2259,7 +1632,7 @@ function ParticipantDossier() {
 
   if (failed) {
     return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
         Dossier data unavailable — run{" "}
         <code style={{ fontFamily: "'DM Mono', monospace" }}>python participant_report.py</code>.
       </div>
@@ -2267,7 +1640,7 @@ function ParticipantDossier() {
   }
   if (!data) {
     return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
         Loading dossier…
       </div>
     );
@@ -2379,7 +1752,7 @@ function ParticipantDossier() {
   const barLen = (v: number) => (Math.abs(v) / maxAbs) * half;
 
   return (
-    <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "#FFFFFF" }}>
+    <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
       {/* masthead + controls */}
       <div className="px-6 md:px-8 pt-6 pb-4 border-b border-border">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -2394,15 +1767,15 @@ function ParticipantDossier() {
           Participant open-interest dossier — who holds what, and who moved.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg border border-border p-0.5" style={{ background: "#EDECEA" }}>
+          <div className="inline-flex rounded-lg border border-border p-0.5" style={{ background: "var(--surface-inset)" }}>
             {DOSSIER_INSTS.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setInst(t.key)}
                 className="px-3 py-1 rounded-md text-sm font-medium transition-all"
                 style={{
-                  background: inst === t.key ? "#FFFFFF" : "transparent",
-                  color: inst === t.key ? INK : "#9E9A92",
+                  background: inst === t.key ? "var(--surface-raised)" : "transparent",
+                  color: inst === t.key ? INK : "var(--ink-muted)",
                   boxShadow: inst === t.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
                 }}
               >
@@ -2414,7 +1787,7 @@ function ParticipantDossier() {
             value={activeDate}
             onChange={(e) => setDate(e.target.value)}
             className="text-sm rounded-lg border border-border px-3 py-1.5"
-            style={{ fontFamily: "'DM Mono', monospace", color: INK, background: "#FFFFFF" }}
+            style={{ fontFamily: "'DM Mono', monospace", color: INK, background: "var(--surface-card)" }}
           >
             {[...dossierDates].reverse().map((dd) => (
               <option key={dd} value={dd}>
@@ -2430,7 +1803,7 @@ function ParticipantDossier() {
         <h2 className="font-bold" style={{ fontFamily: "'Playfair Display', serif", color: INK, lineHeight: 1.05, fontSize: "clamp(1.9rem, 3.4vw, 3rem)" }}>
           {headline}
         </h2>
-        <p className="mt-3 text-base md:text-lg leading-relaxed" style={{ color: "#2E2B26", maxWidth: 760 }}>
+        <p className="mt-3 text-base md:text-lg leading-relaxed" style={{ color: "var(--ink-soft)", maxWidth: 760 }}>
           {lede}
         </p>
       </div>
@@ -2455,14 +1828,14 @@ function ParticipantDossier() {
                     <text x={labelW - 10} y={y + (rowH - 14) / 2} fontSize={14} textAnchor="end" dominantBaseline="middle" fill={INK} style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>
                       {DNAME[b.p].short}
                     </text>
-                    <rect x={bx} y={y} width={Math.max(1, len)} height={rowH - 14} fill={pos ? INK : "#C7C2B6"} rx={2} />
+                    <rect x={bx} y={y} width={Math.max(1, len)} height={rowH - 14} fill={pos ? INK : "var(--hairline)"} rx={2} />
                     <text
                       x={pos ? bx + len + 8 : bx - 8}
                       y={y + (rowH - 14) / 2}
                       fontSize={14}
                       textAnchor={pos ? "start" : "end"}
                       dominantBaseline="middle"
-                      fill={pos ? INK : "#6B6459"}
+                      fill={pos ? INK : "var(--ink-muted)"}
                       style={{ fontFamily: "'DM Mono', monospace", fontWeight: pos ? 700 : 400 }}
                     >
                       {label}
@@ -2490,11 +1863,11 @@ function ParticipantDossier() {
               <div key={p} className="flex items-start gap-3 pb-3 border-b border-border/40 last:border-0">
                 <span
                   className="shrink-0 text-xs uppercase tracking-wider font-bold rounded px-2 py-1 mt-0.5"
-                  style={{ background: "#12151C", color: "#FFFFFF", fontFamily: "'DM Mono', monospace" }}
+                  style={{ background: "var(--ink)", color: "var(--surface-page)", fontFamily: "'DM Mono', monospace" }}
                 >
                   {DNAME[p].short}
                 </span>
-                <div className="min-w-0 text-sm" style={{ color: "#2E2B26" }}>
+                <div className="min-w-0 text-sm" style={{ color: "var(--ink-soft)" }}>
                   <span style={{ fontFamily: "'DM Mono', monospace" }}>
                     Futures net {longShort(d.futures.net)} ({chgStr(d.futures.chg)} today). Calls net {longShort(d.calls.net)} ({chgStr(d.calls.chg)}). Puts net {longShort(d.puts.net)} ({chgStr(d.puts.chg)}). Gross longs — futures {fmt(d.futures.long ?? 0)}, calls {fmt(d.calls.long ?? 0)}, puts {fmt(d.puts.long ?? 0)}.
                   </span>
@@ -2509,8 +1882,8 @@ function ParticipantDossier() {
       </div>
 
       {/* pairing */}
-      <div className="px-6 md:px-8 py-6 mt-2" style={{ background: "#F7F6F2" }}>
-        <p className="text-sm leading-relaxed" style={{ color: "#2E2B26" }}>
+      <div className="px-6 md:px-8 py-6 mt-2" style={{ background: "var(--surface-page)" }}>
+        <p className="text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
           <span style={{ fontWeight: 700 }}>The pairing: </span>
           {pairing}
         </p>
@@ -2519,26 +1892,27 @@ function ParticipantDossier() {
   );
 }
 
-const PARTICIPANTS = ["FII", "DII", "Client", "Pro"];
 
 function ParticipantView() {
-  const [participant, setParticipant] = useState("FII");
   const [lsInst, setLsInst] = useState("futures"); // Long/Short instrument selector
 
   // "NIFTY vs All Participants" — shared state lifted here so the inline card and
-  // the full-screen overlay render the SAME ParticipantsNiftyChart, always in sync.
+  // the full-screen overlay render the SAME ParticipantChart, always in sync.
   const [pvData, setPvData] = useState<ParticipantsData | null>(null);
   const [pvFailed, setPvFailed] = useState(false);
   const [pvHover, setPvHover] = useState<number | null>(null);
   const [pvFull, setPvFull] = useState(false);
   const [bookMode, setBookMode] = useState<BookMode>("main"); // §4: net / gross-long / gross-short
-  // Visible time window, shared by §4 and §5. Defaults to 6M, NOT All: the
+  const [metric, setMetric] = useState<MetricKey>("futures"); // which instrument panel
+  const [renderMode, setRenderMode] = useState<RenderMode>("line");
+  // Visible time window, shared by §4 and §5. Defaults to 1M, NOT All: the
   // archive is ~2,600 days and first paint has to stay cheap.
-  const [range, setRange] = useState<RangeKey>("6M");
+  const [range, setRange] = useState<RangeKey>("1M");
 
   // "Who derived the move" — its own hover + full-screen, reusing the SAME pvData.
   const [dfHover, setDfHover] = useState<number | null>(null);
   const [dfFull, setDfFull] = useState(false);
+  const [dfInst, setDfInst] = useState<string>("futures"); // §5: futures / calls / puts
 
   useEffect(() => {
     let alive = true;
@@ -2587,25 +1961,12 @@ function ParticipantView() {
     };
   }, [pvFull, dfFull]);
 
-  const others = ["FII", "DII", "Pro", "Client"].filter((x) => x !== participant).join(" / ");
-  const caveats = [
-    FII_NIFTY_CAVEATS[0],
-    FII_NIFTY_CAVEATS[1],
-    `${participant} net is one side of a zero-sum book (${others} hold the other side) — this is ${participant}'s stance vs price, not the whole market.`,
-  ];
-
   // The visible window, computed ONCE and shared by §4 and §5 so both sections
   // always show the same span. Slicing happens here, before render — the charts
   // never receive days they aren't drawing.
   const pvWindow = useMemo(
     () => (pvData ? sliceParticipantsData(pvData, pvRangeStart(pvData.dates, range), pvData.dates.length - 1) : null),
     [pvData, range],
-  );
-  // §4 draws 4 panels × 4 participants, so a wide window is decimated for it
-  // alone. §5 keeps the exact window: its driver/persistence maths is day-over-day.
-  const pvChart = useMemo(
-    () => (pvWindow ? decimateParticipantsData(pvWindow, PV_MAX_POINTS) : null),
-    [pvWindow],
   );
 
   // Changing range invalidates both hover indices (they address the OLD, longer
@@ -2620,17 +1981,27 @@ function ParticipantView() {
   // Range selector — sibling of the mode selector below, same markup and styling.
   // Used in BOTH inline cards and BOTH full-screen overlays, driving the same
   // lifted `range` so every view stays in sync.
-  const rangeSelector = (
-    <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5" style={{ background: "#EDECEA" }}>
-      {PV_RANGES.map((o) => (
+  // ONE pill-row idiom behind every selector in §4/§5, so they read as siblings
+  // and a styling change lands in a single place. Used in BOTH the inline cards
+  // and the full-screen overlays, always driving the same lifted state.
+  const pillRow = <T extends string>(
+    opts: readonly { key: T; label: string }[],
+    active: T,
+    onPick: (k: T) => void,
+  ) => (
+    <div
+      className="inline-flex flex-wrap rounded-lg border border-border p-0.5"
+      style={{ background: "var(--surface-inset)" }}
+    >
+      {opts.map((o) => (
         <button
           key={o.key}
-          onClick={() => applyRange(o.key)}
+          onClick={() => onPick(o.key)}
           className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
           style={{
-            background: range === o.key ? "#FFFFFF" : "transparent",
-            color: range === o.key ? INK : "#9E9A92",
-            boxShadow: range === o.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
+            background: active === o.key ? "var(--surface-raised)" : "transparent",
+            color: active === o.key ? "var(--ink)" : "var(--ink-muted)",
+            boxShadow: active === o.key ? "var(--pill-shadow)" : "none",
           }}
         >
           {o.label}
@@ -2639,26 +2010,28 @@ function ParticipantView() {
     </div>
   );
 
-  // Mode selector for §4 — shared markup used in BOTH the inline card and the
-  // full-screen overlay, driving the same lifted `bookMode` so they stay in sync.
-  // It swaps what the three instrument panels plot; it does not add a panel.
-  const bookSelector = (
-    <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5" style={{ background: "#EDECEA" }}>
-      {PV_MODES.map((o) => (
-        <button
-          key={o.key}
-          onClick={() => setBookMode(o.key)}
-          className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-          style={{
-            background: bookMode === o.key ? "#FFFFFF" : "transparent",
-            color: bookMode === o.key ? INK : "#9E9A92",
-            boxShadow: bookMode === o.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
-          }}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+  const rangeSelector = pillRow(PV_RANGES, range, applyRange);
+  // Book mode swaps WHICH leg every metric reads: net → gross long → gross short.
+  const bookSelector = pillRow(PV_MODES, bookMode, setBookMode);
+  // Metric labels follow the active book mode: "(Net)" → "(Long)" → "(Short)".
+  const metricSelector = pillRow(
+    PV_METRICS.map((m) => ({ key: m.key, label: metricLabel(m.key, bookMode) })),
+    metric,
+    setMetric,
+  );
+  const renderToggle = pillRow(
+    [
+      { key: "line" as RenderMode, label: "Line" },
+      { key: "bar" as RenderMode, label: "Bar" },
+    ],
+    renderMode,
+    setRenderMode,
+  );
+  // §5 runs on one instrument at a time — futures / calls / puts.
+  const dfInstSelector = pillRow(
+    DF_INSTRUMENTS.map((o) => ({ key: o.key as string, label: o.label })),
+    dfInst,
+    setDfInst,
   );
   return (
     <div className="space-y-14">
@@ -2666,7 +2039,7 @@ function ParticipantView() {
       <section id="sec-long-short">
         <SectionHeader
           n={1}
-          eyebrow="Long vs Short balance · 20 Jul 2026"
+          eyebrow={`Long vs Short balance · ${pvData ? pvData.dateDisplay[pvData.dates.length - 1] : "latest session"}`}
           title="Who's long, who's short — by participant"
         >
           <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 620 }}>
@@ -2674,16 +2047,17 @@ function ParticipantView() {
             instrument. A balance, not a size — bars aren&apos;t comparable in magnitude across participants.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
-            {/* instrument selector — Futures / Calls / Puts */}
-            <div className="inline-flex rounded-lg border border-border p-0.5" style={{ background: "#EDECEA" }}>
+            {/* instrument selector — Futures / Calls / Puts (kept at its own larger
+                size; the pillRow idiom is the compact in-card variant) */}
+            <div className="inline-flex rounded-lg border border-border p-0.5" style={{ background: "var(--surface-inset)" }}>
               {LS_INSTRUMENTS.map((t) => (
                 <button
                   key={t.key}
                   onClick={() => setLsInst(t.key)}
                   className="px-3.5 py-1.5 rounded-md text-sm font-medium transition-all"
                   style={{
-                    background: lsInst === t.key ? "#FFFFFF" : "transparent",
-                    color: lsInst === t.key ? INK : "#9E9A92",
+                    background: lsInst === t.key ? "var(--surface-raised)" : "transparent",
+                    color: lsInst === t.key ? INK : "var(--ink-muted)",
                     boxShadow: lsInst === t.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
                   }}
                 >
@@ -2692,20 +2066,31 @@ function ParticipantView() {
               ))}
             </div>
             {/* legend */}
-            <div className="flex items-center gap-5 text-xs" style={{ fontFamily: "'DM Mono', monospace", color: "#4A4740" }}>
+            <div className="flex items-center gap-5 text-xs" style={{ fontFamily: "'DM Mono', monospace", color: "var(--ink-soft)" }}>
               <span className="inline-flex items-center gap-2">
-                <span style={{ width: 13, height: 13, background: "#F4B400", borderRadius: 3, display: "inline-block" }} />
+                <span style={{ width: 13, height: 13, background: "var(--bar-long)", borderRadius: 3, display: "inline-block" }} />
                 Long
               </span>
               <span className="inline-flex items-center gap-2">
-                <span style={{ width: 13, height: 13, background: "#000000", borderRadius: 3, display: "inline-block" }} />
+                <span style={{ width: 13, height: 13, background: "var(--bar-short)", borderRadius: 3, display: "inline-block" }} />
                 Short
               </span>
             </div>
           </div>
         </SectionHeader>
         <div className="mt-6">
-          <LongShortChart instrument={lsInst} />
+          {pvFailed ? (
+            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
+              Live chart data unavailable. Generate it with{" "}
+              <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
+            </div>
+          ) : !pvData ? (
+            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
+              Loading chart…
+            </div>
+          ) : (
+            <LongShortChart data={pvData} instrument={lsInst} />
+          )}
         </div>
       </section>
 
@@ -2722,96 +2107,69 @@ function ParticipantView() {
         </div>
       </section>
 
-      {/* ── 3 · Positioning vs Price ── */}
-      <section id="sec-positioning" className="pt-12 border-t border-border">
-        <SectionHeader
-          n={3}
-          eyebrow="Positioning vs Price"
-          title={`${participant} index F&O positioning against NIFTY 50`}
-        >
-          <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 620 }}>
-            Six months on one shared timeline — the index price above {participant}&apos;s net futures,
-            calls and puts. Each panel keeps its own natural units; nothing is normalised. Hover to read any day.
-          </p>
-          {/* participant selector — drives the chart, heading and reading notes */}
-          <div className="inline-flex rounded-lg border border-border p-0.5 mt-4" style={{ background: "#EDECEA" }}>
-            {PARTICIPANTS.map((a) => (
-              <button
-                key={a}
-                onClick={() => setParticipant(a)}
-                className="px-3.5 py-1.5 rounded-md text-sm font-medium transition-all"
-                style={{
-                  background: participant === a ? "#FFFFFF" : "transparent",
-                  color: participant === a ? INK : "#9E9A92",
-                  boxShadow: participant === a ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
-                }}
-              >
-                {a}
-              </button>
-            ))}
-          </div>
-        </SectionHeader>
-        <div className="mt-6 space-y-8">
-          <FiiNiftyChart participant={participant} />
-          {/* Reading notes (the caveats, as selectable text) */}
-          <div className="rounded-2xl border border-border px-7 py-6 space-y-2.5" style={{ background: "#FFFFFF" }}>
-            <p className="text-xs uppercase tracking-widest" style={{ color: MUTED }}>
-              Reading notes
-            </p>
-            {caveats.map((c, i) => (
-              <p
-                key={i}
-                className="text-xs leading-relaxed"
-                style={{ fontFamily: "'DM Mono', monospace", color: "#4A4740" }}
-              >
-                •&nbsp;&nbsp;{c}
-              </p>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 4 · NIFTY vs All Participants ── */}
+      {/* ── 3 · NIFTY vs All Participants ── (was §4; old §3 removed) */}
       <section id="sec-participants-nifty" className="pt-12 border-t border-border">
         <SectionHeader
-          n={4}
+          n={3}
           eyebrow="NIFTY vs All Participants"
           title="All four participants against NIFTY 50"
         >
-          <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 620 }}>
-            The same shared timeline, but every participant at once — FII, DII, Client and Pro
-            futures, calls and puts on one colour key. The selector swaps all three panels between
-            the net position and the gross long or short leg behind it, so you can see how much of
-            each book is being carried on either side. Each panel keeps its own natural units;
-            nothing is normalised. Hover any day to read all four participants together.
+          <p className="mt-2 text-sm" style={{ color: "var(--ink-muted)", maxWidth: 640 }}>
+            NIFTY 50 on top, every participant below it on one colour key. The book selector swaps
+            which leg each metric reads — the net position, or the gross long or short leg behind
+            it. Δ views show the one-day change instead of the level. Nothing is normalised; hover
+            any day to read all four participants together.
           </p>
         </SectionHeader>
         <div className="mt-6">
           {pvFailed ? (
-            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+            <div
+              className="rounded-2xl border border-border px-7 py-8 text-sm"
+              style={{ background: "var(--surface-card)", color: "var(--ink-muted)" }}
+            >
               Live chart data unavailable. Generate it with{" "}
               <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
             </div>
           ) : !pvData ? (
-            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+            <div
+              className="rounded-2xl border border-border px-7 py-8 text-sm"
+              style={{ background: "var(--surface-card)", color: "var(--ink-muted)" }}
+            >
               Loading chart…
             </div>
           ) : (
-            <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "#FFFFFF" }}>
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div
+              className="rounded-2xl border border-border p-5 md:p-7"
+              style={{ background: "var(--surface-card)" }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {bookSelector}
                 <div className="flex flex-wrap items-center gap-3">
-                  {bookSelector}
-                  {rangeSelector}
+                  {renderToggle}
+                  <button
+                    onClick={() => setPvFull(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={{ color: "var(--ink)", background: "var(--surface-inset)" }}
+                  >
+                    ⤢ Full screen
+                  </button>
                 </div>
-                <button
-                  onClick={() => setPvFull(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
-                  style={{ color: INK, background: "#F7F6F2" }}
-                >
-                  ⤢ Full screen
-                </button>
               </div>
-              {pvChart && <ParticipantsNiftyChart data={pvChart} hover={pvHover} setHover={setPvHover} mode={bookMode} />}
+              <div className="mt-3">{metricSelector}</div>
+              <div className="mt-3">{rangeSelector}</div>
+              <div className="mt-5">
+                {/* The FULL dataset goes in, not a pre-sliced window: Δ must be
+                    derived before slicing or the first day of every range is wrong. */}
+                <ParticipantChart
+                  data={pvData}
+                  mode={bookMode}
+                  metric={metric}
+                  range={range}
+                  render={renderMode}
+                  hover={pvHover}
+                  setHover={setPvHover}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -2825,7 +2183,7 @@ function ParticipantView() {
             position: "fixed",
             inset: 0,
             zIndex: 100,
-            background: BG,
+            background: "var(--surface-page)",
             overflow: "hidden",
             padding: "16px 24px 18px",
             display: "flex",
@@ -2833,64 +2191,80 @@ function ParticipantView() {
           }}
         >
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3 shrink-0">
-            <p className="text-lg font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: INK }}>
+            <p className="text-lg font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: "var(--ink)" }}>
               <em>All four participants against NIFTY 50</em>
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              {bookSelector}
-              {rangeSelector}
+              {renderToggle}
               <button
                 onClick={() => setPvFull(false)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ color: INK, background: "#FFFFFF" }}
+                style={{ color: "var(--ink)", background: "var(--surface-card)" }}
               >
                 ✕ Close (Esc)
               </button>
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-3 mb-3 shrink-0">
+            {bookSelector}
+            {metricSelector}
+            {rangeSelector}
+          </div>
           <div style={{ flex: "1 1 0", minHeight: 0 }}>
-            {pvChart && <ParticipantsNiftyChart data={pvChart} hover={pvHover} setHover={setPvHover} tall mode={bookMode} />}
+            <ParticipantChart
+              data={pvData}
+              mode={bookMode}
+              metric={metric}
+              range={range}
+              render={renderMode}
+              hover={pvHover}
+              setHover={setPvHover}
+              tall
+            />
           </div>
         </div>
       )}
 
-      {/* ── 5 · Who derived the move ── (driver / absorber on the futures flow) */}
+      {/* ── 4 · Who derived the move ── (driver / absorber on the futures flow) */}
       <section id="sec-driver" className="pt-12 border-t border-border">
         <SectionHeader
-          n={5}
-          eyebrow="Who derived the move · Index Futures"
+          n={4}
+          eyebrow={`Who derived the move · ${DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}`}
           title="Who drove each day — driver, absorber & conviction"
         >
           <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 640 }}>
             The four net lines are context; the ribbon beneath them names the day&apos;s <em>driver</em> — the
-            biggest one-day change in net futures that agrees with the NIFTY move. A run of one colour is
+            biggest one-day change in the chosen instrument that agrees with the NIFTY move. A run of one colour is
             persistence. Hover to rank every player by today&apos;s Δ, with conviction (Δ vs their own book) and
             who absorbed it.
           </p>
         </SectionHeader>
         <div className="mt-6">
           {pvFailed ? (
-            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
               Live chart data unavailable. Generate it with{" "}
               <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
             </div>
           ) : !pvData ? (
-            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "#FFFFFF", color: MUTED }}>
+            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
               Loading chart…
             </div>
           ) : (
-            <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "#FFFFFF" }}>
+            <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "var(--surface-card)" }}>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-                {rangeSelector}
+                <div className="flex flex-wrap items-center gap-3">
+                  {dfInstSelector}
+                  {rangeSelector}
+                </div>
                 <button
                   onClick={() => setDfFull(true)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
-                  style={{ color: INK, background: "#F7F6F2" }}
+                  style={{ color: INK, background: "var(--surface-page)" }}
                 >
                   ⤢ Full screen
                 </button>
               </div>
-              {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} />}
+              {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} instrument={dfInst} />}
             </div>
           )}
         </div>
@@ -2913,29 +2287,30 @@ function ParticipantView() {
         >
           <div className="flex items-center justify-between mb-3 shrink-0">
             <p className="text-lg font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: INK }}>
-              <em>Who drove each day — Index Futures</em>
+              <em>Who drove each day — {DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}</em>
             </p>
             <div className="flex flex-wrap items-center gap-3">
+              {dfInstSelector}
               {rangeSelector}
               <button
                 onClick={() => setDfFull(false)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ color: INK, background: "#FFFFFF" }}
+                style={{ color: INK, background: "var(--surface-card)" }}
               >
                 ✕ Close (Esc)
               </button>
             </div>
           </div>
           <div style={{ flex: "1 1 0", minHeight: 0 }}>
-            {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} tall />}
+            {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} tall instrument={dfInst} />}
           </div>
         </div>
       )}
 
-      {/* ── 6 · The dossier — who holds what, and who moved ── */}
+      {/* ── 5 · The dossier — who holds what, and who moved ── */}
       <section id="sec-dossier" className="pt-12 border-t border-border">
         <SectionHeader
-          n={6}
+          n={5}
           eyebrow="Daily dossier · net-OI one-day change"
           title="The one-day read — who holds what"
         >
@@ -2975,7 +2350,20 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 // ─── app ─────────────────────────────────────────────────────────────────────
+/** Reads the saved choice once, before first paint, so there is no flash of the
+ *  wrong theme. Defaults to dark when nothing has been saved yet. */
+function initialTheme(): "light" | "dark" {
+  try {
+    const saved = localStorage.getItem("pulse-theme");
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    /* private mode / storage disabled — fall through to the default */
+  }
+  return "dark";
+}
+
 export default function App() {
+  const [theme, setTheme] = useState<"light" | "dark">(initialTheme);
   const [section, setSection] = useState<Section>("participant");
   const [activeTab, setActiveTab] = useState<Tab>("daily");
   const [data, setData] = useState<BriefData | null>(null);
@@ -3003,6 +2391,16 @@ export default function App() {
     };
   }, [activeTab]);
 
+  // One class on <html> flips every --token in theme.css at once.
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    try {
+      localStorage.setItem("pulse-theme", theme);
+    } catch {
+      /* storage unavailable — the theme still applies for this session */
+    }
+  }, [theme]);
+
   return (
     <div
       className="min-h-screen bg-background"
@@ -3011,7 +2409,7 @@ export default function App() {
       {/* ── Navbar ── (bar spans full width; inner content shares the body's max width) */}
       <nav
         className="sticky top-0 z-50 h-14 border-b"
-        style={{ background: INK, borderColor: "rgba(255,255,255,0.07)" }}
+        style={{ background: "var(--nav-bg)", borderColor: "rgba(255,255,255,0.07)" }}
       >
         <div className="w-[80%] mx-auto h-full flex items-center gap-0">
         {/* Wordmark */}
@@ -3021,6 +2419,21 @@ export default function App() {
         >
           Equinext Pulse
         </span>
+
+        {/* Theme toggle — pinned right, mirrors the nav's own light-on-dark idiom */}
+        <button
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          className="order-last ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
+          style={{
+            color: "rgba(255,255,255,0.72)",
+            background: "rgba(255,255,255,0.07)",
+            fontFamily: "'DM Mono', monospace",
+          }}
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        >
+          {theme === "dark" ? "☾ Dark" : "☀ Light"}
+        </button>
 
         {/* Nav items */}
         <div className="hidden md:flex items-center">
@@ -3093,7 +2506,7 @@ export default function App() {
             </h1>
             <p
               className="mt-4 text-base"
-              style={{ color: "#9E9A92", maxWidth: 400 }}
+              style={{ color: "var(--ink-muted)", maxWidth: 400 }}
             >
               NSE participant positioning, refreshed every trading morning.
             </p>
@@ -3102,7 +2515,7 @@ export default function App() {
             className="shrink-0 self-start md:self-auto text-xs px-3.5 py-2 rounded-lg border border-border"
             style={{
               fontFamily: "'DM Mono', monospace",
-              color: "#9E9A92",
+              color: "var(--ink-muted)",
               background: "rgba(18,21,28,0.03)",
             }}
           >
@@ -3134,7 +2547,7 @@ export default function App() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div
             className="inline-flex rounded-lg border border-border p-0.5 self-start"
-            style={{ background: "#EDECEA" }}
+            style={{ background: "var(--surface-inset)" }}
           >
             {TABS.map((t) => (
               <button
@@ -3142,8 +2555,8 @@ export default function App() {
                 onClick={() => setActiveTab(t.key)}
                 className="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
                 style={{
-                  background: activeTab === t.key ? "#FFFFFF" : "transparent",
-                  color: activeTab === t.key ? INK : "#9E9A92",
+                  background: activeTab === t.key ? "var(--surface-raised)" : "transparent",
+                  color: activeTab === t.key ? INK : "var(--ink-muted)",
                   boxShadow:
                     activeTab === t.key
                       ? "0 1px 3px rgba(18,21,28,0.08)"
@@ -3162,8 +2575,8 @@ export default function App() {
             {data?.dateA && data?.dateB && (
               <>
                 <span style={{ color: INK, fontWeight: 500 }}>{data.dateA.display}</span>
-                <span style={{ color: "#B0AB9E" }}>vs</span>
-                <span style={{ color: "#9E9A92" }}>{data.dateB.display}</span>
+                <span style={{ color: "var(--ink-muted)" }}>vs</span>
+                <span style={{ color: "var(--ink-muted)" }}>{data.dateB.display}</span>
               </>
             )}
           </div>
@@ -3173,12 +2586,12 @@ export default function App() {
         {error && (
           <div
             className="rounded-xl border border-border px-6 py-5"
-            style={{ background: "#FFFFFF" }}
+            style={{ background: "var(--surface-card)" }}
           >
             <p className="text-sm" style={{ color: RED }}>
               Could not load {error}
             </p>
-            <p className="text-xs mt-2" style={{ color: "#9E9A92" }}>
+            <p className="text-xs mt-2" style={{ color: "var(--ink-muted)" }}>
               Generate the data first: <code>python analysis.py --export-dashboard</code>
             </p>
           </div>
@@ -3187,21 +2600,21 @@ export default function App() {
         {!data && !error && (
           <div
             className="rounded-xl border border-border px-6 py-5"
-            style={{ background: "#FFFFFF" }}
+            style={{ background: "var(--surface-card)" }}
           >
-            <p className="text-sm" style={{ color: "#9E9A92" }}>Loading…</p>
+            <p className="text-sm" style={{ color: "var(--ink-muted)" }}>Loading…</p>
           </div>
         )}
 
         {data && !data.available && (
           <div
             className="rounded-xl border border-border px-6 py-5"
-            style={{ background: "#FFFFFF" }}
+            style={{ background: "var(--surface-card)" }}
           >
-            <p className="text-xs uppercase tracking-widest mb-2" style={{ color: "#9E9A92" }}>
+            <p className="text-xs uppercase tracking-widest mb-2" style={{ color: "var(--ink-muted)" }}>
               Not available
             </p>
-            <p className="text-sm" style={{ color: "#2E2B26" }}>{data.reason}</p>
+            <p className="text-sm" style={{ color: "var(--ink-soft)" }}>{data.reason}</p>
           </div>
         )}
 
@@ -3210,11 +2623,11 @@ export default function App() {
             {/* Headline card */}
             <div
               className="rounded-xl border border-border px-6 py-5"
-              style={{ background: "#FFFFFF" }}
+              style={{ background: "var(--surface-card)" }}
             >
               <p
                 className="text-xs uppercase tracking-widest mb-2"
-                style={{ color: "#9E9A92" }}
+                style={{ color: "var(--ink-muted)" }}
               >
                 Biggest Move
               </p>
@@ -3230,7 +2643,7 @@ export default function App() {
             {data.note && (
               <p
                 className="text-xs"
-                style={{ fontFamily: "'DM Mono', monospace", color: "#B0AB9E" }}
+                style={{ fontFamily: "'DM Mono', monospace", color: "var(--ink-muted)" }}
               >
                 {data.note}
               </p>
@@ -3255,11 +2668,11 @@ export default function App() {
             {data.total && (
               <div
                 className="rounded-xl border border-border px-6 py-4 flex flex-wrap items-center gap-3"
-                style={{ background: "#FFFFFF" }}
+                style={{ background: "var(--surface-card)" }}
               >
                 <span
                   className="text-xs uppercase tracking-widest shrink-0"
-                  style={{ color: "#9E9A92" }}
+                  style={{ color: "var(--ink-muted)" }}
                 >
                   Total
                 </span>

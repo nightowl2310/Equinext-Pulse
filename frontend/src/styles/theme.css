@@ -39,28 +39,91 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── Equinext Pulse app tokens ─────────────────────────────────────────
+     Every hardcoded colour in App.tsx resolves through one of these, so a
+     single `.dark` class on <html> flips the whole dashboard. Surfaces are
+     deliberately split: --surface-card (a panel) and --surface-raised (an
+     ACTIVE toggle pill) are the same white in light mode but must diverge
+     in dark, or active pills become invisible. */
+  --surface-page: #F7F6F2;    /* page background          */
+  --surface-card: #FFFFFF;    /* panels, cards            */
+  --surface-inset: #EDECEA;   /* recessed pill-row track  */
+  --surface-raised: #FFFFFF;  /* the ACTIVE pill itself   */
+  --surface-subtle: #FBFAF7;  /* faint zebra / table rows */
+  --ink: #12151C;             /* primary text + SVG strokes */
+  --ink-soft: #4A4740;        /* secondary body copy      */
+  --ink-muted: #9E9A92;       /* labels, axis ticks       */
+  --grid: #E5E1D8;            /* chart gridlines          */
+  --hairline: #C8C3B8;        /* axis lines, dividers     */
+  --crosshair: #2E2B26;       /* hover crosshair          */
+  --pill-shadow: 0 1px 3px rgba(18, 21, 28, 0.08);
+
+  /* Sentiment tints — low-alpha so they survive on either background. */
+  --tint-bull: rgba(21, 138, 78, 0.10);
+  --tint-bear: rgba(192, 54, 44, 0.10);
+  --tint-flat: rgba(18, 21, 28, 0.05);
+  --ink-bull: #158A4E;
+  --ink-bear: #C0362C;
+  --edge-bull: #BEE3CC;
+  --edge-bear: #F0C6C1;
+  /* §1 long-vs-short bars. Amber carries "long" in both themes; "short" is the
+     high-contrast neutral, so it MUST invert or it turns into a black slab on a
+     dark card (which is exactly how the old matplotlib PNGs failed). */
+  --bar-long: #F4B400;
+  --bar-short: #12151C;
+  /* The navbar is a permanently dark plate in BOTH themes, so it can
+     never resolve through --ink (which inverts). */
+  --nav-bg: #12151C;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --background: #0B0F14;
+  --foreground: #E6EDF3;
+  --card: #131A22;
+  --card-foreground: #E6EDF3;
+  --popover: #131A22;
+  --popover-foreground: #E6EDF3;
+  --primary: #E6EDF3;
+  --primary-foreground: #0B0F14;
+  --secondary: #1C2733;
+  --secondary-foreground: #E6EDF3;
+  --muted: #1C2733;
+  --muted-foreground: #8B949E;
+  --accent: #1C2733;
+  --accent-foreground: #E6EDF3;
+  --destructive: #C0362C;
+  --destructive-foreground: #FFFFFF;
+  /* Explicit, not the stock opaque grey — matches the reference images. */
+  --border: #1E2A36;
+  --input: #1C2733;
+  --input-background: #0E141B;
+  --ring: #3FA9F5;
+
+  /* ── App tokens, dark ── */
+  --surface-page: #0B0F14;
+  --surface-card: #131A22;
+  --surface-inset: #0E141B;
+  --surface-raised: #1C2733;
+  --surface-subtle: #161D26;
+  --ink: #E6EDF3;
+  --ink-soft: #C4CDD6;
+  --ink-muted: #8B949E;
+  --grid: #1F2933;
+  --hairline: #2C3844;
+  --crosshair: #FFFFFF;
+  --pill-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+
+  --tint-bull: rgba(76, 199, 124, 0.12);
+  --tint-bear: rgba(192, 54, 44, 0.15);
+  --tint-flat: rgba(230, 237, 243, 0.06);
+  --ink-bull: #4CC77C;
+  --ink-bear: #E5645A;
+  --edge-bull: rgba(76,199,124,0.35);
+  --edge-bear: rgba(229,100,90,0.35);
+  --bar-long: #F0B429;
+  --bar-short: #8FA3B8;
+  --nav-bg: #080B0F;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);

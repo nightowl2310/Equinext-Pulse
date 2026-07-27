@@ -1,0 +1,370 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Series maths for the participant charts.
+//
+// Everything here is pure and framework-free so it can be reasoned about (and
+// tested) without React. The chart component does layout and SVG; this module
+// decides WHAT numbers get drawn.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One participant's columnar series, all parallel to the shared `dates` axis. */
+export interface ParticipantSeries {
+  futures: (number | null)[];
+  calls: (number | null)[];
+  puts: (number | null)[];
+  // Gross legs (always ≥ 0) — the Long Book / Short Book modes plot these.
+  futuresLong: (number | null)[];
+  futuresShort: (number | null)[];
+  callsLong: (number | null)[];
+  callsShort: (number | null)[];
+  putsLong: (number | null)[];
+  putsShort: (number | null)[];
+  longBook: (number | null)[];
+  shortBook: (number | null)[];
+  longBookDelta: (number | null)[];
+  shortBookDelta: (number | null)[];
+}
+
+export interface ParticipantsData {
+  symbol: string;
+  start: string;
+  end: string;
+  count: number;
+  dates: string[];
+  dateDisplay: string[]; // "20 Jul 2026"
+  day: string[]; // "Monday"
+  expiry: boolean[]; // weekly expiry flag
+  nifty: (number | null)[];
+  participants: Record<string, ParticipantSeries>;
+}
+
+/** Fixed across BOTH themes — series colour must never shift mid-analysis. */
+export const PV_PARTICIPANTS = ["Client", "DII", "FII", "Pro"] as const;
+export type ParticipantName = (typeof PV_PARTICIPANTS)[number];
+
+export const PV_COLORS: Record<string, string> = {
+  Client: "#3FA9F5", // blue
+  DII: "#E8A33D", // amber
+  FII: "#B08FE8", // purple
+  Pro: "#4CC77C", // green
+};
+
+/** Role parentheticals — they read better than bare acronyms in a legend. */
+export const PV_ROLE: Record<string, string> = {
+  Client: "Client (Retail)",
+  DII: "DII (Domestic Funds)",
+  FII: "FII (Smart Money)",
+  Pro: "Pro (Prop Desks)",
+};
+
+// ── Book mode ────────────────────────────────────────────────────────────────
+
+export type BookMode = "main" | "longBook" | "shortBook";
+
+export const PV_MODES: { key: BookMode; label: string }[] = [
+  { key: "main", label: "Main" },
+  { key: "longBook", label: "Long Book" },
+  { key: "shortBook", label: "Short Book" },
+];
+
+/** The suffix each mode gives its metric pills: Net → Long → Short. */
+const MODE_SUFFIX: Record<BookMode, string> = {
+  main: "Net",
+  longBook: "Long",
+  shortBook: "Short",
+};
+
+// ── Metrics ──────────────────────────────────────────────────────────────────
+
+export type MetricKey =
+  | "futures"
+  | "futuresDelta"
+  | "calls"
+  | "callsDelta"
+  | "puts"
+  | "putsDelta";
+
+/** Which raw field each (mode, instrument) pair reads. */
+const FIELD: Record<BookMode, { futures: keyof ParticipantSeries; calls: keyof ParticipantSeries; puts: keyof ParticipantSeries }> = {
+  main: { futures: "futures", calls: "calls", puts: "puts" },
+  longBook: { futures: "futuresLong", calls: "callsLong", puts: "putsLong" },
+  shortBook: { futures: "futuresShort", calls: "callsShort", puts: "putsShort" },
+};
+
+export const PV_METRICS: { key: MetricKey; instrument: "futures" | "calls" | "puts"; isDelta: boolean; noun: string }[] = [
+  { key: "futures", instrument: "futures", isDelta: false, noun: "Index Futures" },
+  { key: "futuresDelta", instrument: "futures", isDelta: true, noun: "Index Futures" },
+  { key: "calls", instrument: "calls", isDelta: false, noun: "Index Calls" },
+  { key: "callsDelta", instrument: "calls", isDelta: true, noun: "Index Calls" },
+  { key: "puts", instrument: "puts", isDelta: false, noun: "Index Puts" },
+  { key: "putsDelta", instrument: "puts", isDelta: true, noun: "Index Puts" },
+];
+
+/** "Index Futures (Δ Long)" etc. — the label adapts to the active book mode. */
+export function metricLabel(key: MetricKey, mode: BookMode): string {
+  const m = PV_METRICS.find((x) => x.key === key)!;
+  const suffix = MODE_SUFFIX[mode];
+  return `${m.noun} (${m.isDelta ? "Δ " : ""}${suffix})`;
+}
+
+/** Resolve a (metric, mode) pair to the raw field name plus a delta flag. */
+export function resolveMetric(key: MetricKey, mode: BookMode): { field: keyof ParticipantSeries; isDelta: boolean } {
+  const m = PV_METRICS.find((x) => x.key === key)!;
+  return { field: FIELD[mode][m.instrument], isDelta: m.isDelta };
+}
+
+// ── Deltas ───────────────────────────────────────────────────────────────────
+
+/**
+ * Day-over-day change.
+ *
+ * MUST be computed on the FULL array before any range slicing — deriving it
+ * from an already-sliced window makes the first point of every range null (or
+ * silently wrong, if you back-fill it). Index 0 of the full series is genuinely
+ * unknowable and stays null.
+ */
+export function toDelta(vals: (number | null)[]): (number | null)[] {
+  const out: (number | null)[] = new Array(vals.length).fill(null);
+  for (let i = 1; i < vals.length; i++) {
+    const a = vals[i - 1];
+    const b = vals[i];
+    out[i] = a === null || a === undefined || b === null || b === undefined ? null : b - a;
+  }
+  return out;
+}
+
+// ── Time ranges ──────────────────────────────────────────────────────────────
+
+export type RangeKey = "1M" | "3M" | "6M" | "1Y" | "3Y" | "ALL";
+
+export const PV_RANGES: { key: RangeKey; label: string; months: number | null }[] = [
+  { key: "1M", label: "1M", months: 1 },
+  { key: "3M", label: "3M", months: 3 },
+  { key: "6M", label: "6M", months: 6 },
+  { key: "1Y", label: "1Y", months: 12 },
+  { key: "3Y", label: "3Y", months: 36 },
+  { key: "ALL", label: "All", months: null },
+];
+
+/**
+ * First index inside `range`, measured backwards in CALENDAR months from the
+ * last date in the file (not a fixed row count — trading days per month vary).
+ * Returns 0 for "ALL" or when the file is shorter than the requested window.
+ */
+export function rangeStartIndex(dates: string[], range: RangeKey): number {
+  if (!dates.length) return 0;
+  const spec = PV_RANGES.find((r) => r.key === range);
+  if (!spec || spec.months === null) return 0;
+
+  const last = new Date(`${dates[dates.length - 1]}T00:00:00Z`);
+  const cutoff = new Date(last);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - spec.months);
+  const cutoffISO = cutoff.toISOString().slice(0, 10);
+
+  const i = dates.findIndex((d) => d >= cutoffISO);
+  return i < 0 ? 0 : i;
+}
+
+// ── Decimation ───────────────────────────────────────────────────────────────
+
+/** Above this many points we thin LEVEL series before drawing. */
+export const DECIMATE_ABOVE = 800;
+
+/**
+ * Evenly-strided indices covering [0, n), always including the first and last
+ * point so the axis endpoints still match the selected range label.
+ *
+ * Never call this for a Δ series: stride-sampling drops exactly the one-day
+ * spikes a delta chart exists to show.
+ */
+export function decimateIndices(n: number, max: number = DECIMATE_ABOVE): number[] {
+  if (n <= max) return Array.from({ length: n }, (_, i) => i);
+  const out: number[] = [];
+  const step = (n - 1) / (max - 1);
+  for (let k = 0; k < max; k++) out.push(Math.round(k * step));
+  out[0] = 0;
+  out[out.length - 1] = n - 1;
+  // Rounding can repeat an index; de-dupe while preserving order.
+  return out.filter((v, i) => i === 0 || v !== out[i - 1]);
+}
+
+// ── Whole-dataset slicing ────────────────────────────────────────────────────
+// These operate on a full ParticipantsData rather than a single series. They
+// were moved here out of App.tsx so there is exactly ONE implementation of
+// range/decimation logic in the codebase.
+
+/** Alias kept for the §4/§5 call sites that predate this module. */
+export const pvRangeStart = rangeStartIndex;
+export const PV_MAX_POINTS = DECIMATE_ABOVE;
+
+/**
+ * Which indices survive decimation, or null when none is needed.
+ *
+ * ALWAYS keeps the first and — critically — the LAST index: header chips read
+ * `series[N-1]`, and a plain `i += stride` walk ends on the last multiple of
+ * stride, not on N-1, which would silently show a stale day at wide ranges.
+ */
+export function pvKeepIndices(n: number, max: number): number[] | null {
+  if (n <= max) return null;
+  const stride = Math.ceil((n - 1) / (max - 1));
+  const keep: number[] = [];
+  for (let i = 0; i < n - 1; i += stride) keep.push(i);
+  keep.push(n - 1);
+  return keep;
+}
+
+/**
+ * Apply ONE index set to every parallel array in lockstep — the date axis, the
+ * NIFTY closes, the expiry flags and every field of every participant series.
+ * Series fields are iterated generically: `ParticipantSeries` has 13 keys and a
+ * hand-written list would silently yield `undefined` for whichever one it missed.
+ */
+export function pvPick(data: ParticipantsData, idx: number[]): ParticipantsData {
+  const take = <T,>(arr: T[]): T[] => idx.map((i) => arr[i]);
+  const participants: Record<string, ParticipantSeries> = {};
+  for (const [p, s] of Object.entries(data.participants)) {
+    const out: Record<string, (number | null)[]> = {};
+    for (const k of Object.keys(s)) out[k] = take((s as unknown as Record<string, (number | null)[]>)[k]);
+    participants[p] = out as unknown as ParticipantSeries;
+  }
+  return {
+    ...data,
+    count: idx.length,
+    start: data.dates[idx[0]] ?? data.start,
+    end: data.dates[idx[idx.length - 1]] ?? data.end,
+    dates: take(data.dates),
+    dateDisplay: take(data.dateDisplay),
+    day: take(data.day),
+    expiry: take(data.expiry),
+    nifty: take(data.nifty),
+    participants,
+  };
+}
+
+/** The window [i0 .. i1], every parallel array cut identically. */
+export function sliceParticipantsData(data: ParticipantsData, i0: number, i1: number): ParticipantsData {
+  const lo = Math.max(0, Math.min(i0, data.dates.length - 1));
+  const hi = Math.max(lo, Math.min(i1, data.dates.length - 1));
+  if (lo === 0 && hi === data.dates.length - 1) return data;
+  const idx: number[] = [];
+  for (let i = lo; i <= hi; i++) idx.push(i);
+  return pvPick(data, idx);
+}
+
+/**
+ * Stride-sample a wide window down to a drawable number of points. ONLY safe
+ * for LEVEL panels: §5 reads day-over-day Δs, and sampling would quietly turn
+ * those into multi-day Δs and mis-attribute the daily driver.
+ */
+export function decimateParticipantsData(data: ParticipantsData, max: number): ParticipantsData {
+  const idx = pvKeepIndices(data.dates.length, max);
+  return idx ? pvPick(data, idx) : data;
+}
+
+// ── Domain ───────────────────────────────────────────────────────────────────
+
+/**
+ * Min/max across every supplied series, padded ~6%.
+ *
+ * Guards the degenerate case: DII's index option columns are literally 0 in the
+ * older NSE files, so in Long/Short Book calls/puts DII is a flat line at zero.
+ * That is correct data, not a bug — but min === max would collapse the scale to
+ * a division by zero, so we widen it to a readable band.
+ */
+export function domainOf(series: (number | null)[][], includeZero: boolean): [number, number] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const s of series) {
+    for (const v of s) {
+      if (v === null || v === undefined || !Number.isFinite(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [-1, 1];
+  if (includeZero) {
+    lo = Math.min(lo, 0);
+    hi = Math.max(hi, 0);
+  }
+  if (lo === hi) {
+    const pad = Math.abs(lo) > 1 ? Math.abs(lo) * 0.1 : 1;
+    return [lo - pad, hi + pad];
+  }
+  const pad = (hi - lo) * 0.06;
+  return [lo - pad, hi + pad];
+}
+
+// ── Formatting ───────────────────────────────────────────────────────────────
+
+/** 171181 → "171.181k", -1_250_000 → "-1.25M". Matches the reference tooltips. */
+export function fmtCompact(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if (a >= 1e7) return `${(v / 1e7).toFixed(2)}Cr`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (a >= 1000) return `${(v / 1000).toFixed(3).replace(/\.?0+$/, "")}k`;
+  return `${Math.round(v)}`;
+}
+
+/** Terser variant for axis ticks: 30000 → "30k". */
+export function fmtAxis(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1e7) return `${(v / 1e7).toFixed(1)}Cr`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1000) return `${Math.round(v / 1000)}k`;
+  return `${Math.round(v)}`;
+}
+
+/** "2026-07-24" → "24/07/2026", the format the reference charts use. */
+export function fmtDateDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+// ── Smoothing ────────────────────────────────────────────────────────────────
+
+/**
+ * Monotone-ish cubic path through the points, matching the smoothed look of the
+ * reference charts. Control points are pulled back to 1/3 of each gap, which
+ * keeps the curve from overshooting into visual artefacts on spiky Δ series.
+ */
+export function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+
+/** Split into runs of consecutive non-null points so gaps break the line. */
+export function segmentsOf(
+  vals: (number | null)[],
+  idx: number[],
+  xOf: (i: number) => number,
+  yOf: (v: number) => number,
+): { x: number; y: number }[][] {
+  const segs: { x: number; y: number }[][] = [];
+  let cur: { x: number; y: number }[] = [];
+  idx.forEach((i, k) => {
+    const v = vals[i];
+    if (v === null || v === undefined || !Number.isFinite(v)) {
+      if (cur.length) segs.push(cur);
+      cur = [];
+    } else {
+      cur.push({ x: xOf(k), y: yOf(v) });
+    }
+  });
+  if (cur.length) segs.push(cur);
+  return segs;
+}
