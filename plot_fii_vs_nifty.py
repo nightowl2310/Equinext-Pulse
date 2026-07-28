@@ -30,6 +30,10 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
+# THE single definition of every derived signal number. Pure stdlib by design --
+# importing it keeps this script runnable on the daily job without pandas.
+import signals
+
 WEEKDAY_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 # matplotlib is imported LAZILY (see _ensure_mpl) so the JSON-emit path — used by
@@ -224,6 +228,18 @@ def write_participants_json(dates, close, series, out_path):
                   for i in range(len(dates))],
         "participants": participants,
     }
+
+    # Short-book saturation. Additive key: absent when history is too short to
+    # rank, and the frontend renders nothing rather than guessing. Computed from
+    # signals.py so the dashboard and the backtest can never disagree on what
+    # "98th percentile" means.
+    saturation = signals.build_saturation_block(
+        list(dates),
+        [None if close[i] is None else float(close[i]) for i in range(len(dates))],
+        {a: _ints(series[a]["fut_s"]) for a in ACTORS},
+    )
+    if saturation is not None:
+        payload["saturation"] = saturation
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload), encoding="utf-8")

@@ -24,6 +24,61 @@ export interface ParticipantSeries {
   shortBookDelta: (number | null)[];
 }
 
+/** Evidence travelling with a signal, so a number can never render without it. */
+export interface SignalValidation {
+  status: string; // "validated" | "descriptive" | "NOT VALIDATED"
+  attacksSurvived?: string; // "5/5"
+  failed?: string[];
+  note: string;
+}
+
+/** One historical firing of the saturation rule, with what followed. */
+export interface SaturationEpisode {
+  date: string;
+  peakPercentile: number | null;
+  sessions: number;
+  niftyAt: number | null;
+  niftyAfter: number | null;
+  forwardPct: number | null;
+  complete: boolean;
+}
+
+/**
+ * Short-book saturation — the only rule in this project that survives all five
+ * validation attacks. Emitted by signals.build_saturation_block().
+ *
+ * ABSENT rather than zeroed when history is too short to rank, so the UI
+ * renders nothing instead of a confident-looking default.
+ */
+export interface SaturationBlock {
+  schemaVersion: number;
+  actor: string; // "FII"
+  window: number; // 250 sessions
+  horizon: number; // 30 sessions
+  triggerPercentile: number; // 98
+  armedPercentile: number; // 90
+  latest: {
+    date: string;
+    shortBook: number;
+    percentile: number;
+    state: "quiet" | "armed" | "firing" | "unknown";
+    triggerLevel: number;
+    gapContracts: number;
+    gapPercent: number | null;
+    rangeLow: number;
+    rangeHigh: number;
+  };
+  episodes: SaturationEpisode[];
+  episodeCount: number;
+  episodesUp: number;
+  episodesComplete: number;
+  validation: SignalValidation;
+}
+
+/** Bump in lockstep with signals.SIGNAL_SCHEMA_VERSION. A mismatch is rendered
+ *  as a visible warning rather than silently blank fields. */
+export const SIGNAL_SCHEMA_EXPECTED = 2;
+
 export interface ParticipantsData {
   symbol: string;
   start: string;
@@ -35,9 +90,41 @@ export interface ParticipantsData {
   expiry: boolean[]; // weekly expiry flag
   nifty: (number | null)[];
   participants: Record<string, ParticipantSeries>;
+  saturation?: SaturationBlock; // additive; absent on older payloads
+}
+
+/**
+ * A two-anchor measurement on ONE participant's line.
+ *
+ * The index unit is chart-local and deliberately asymmetric:
+ *   §3 (ParticipantChart) stores RAW indices into the full `dates` array — its
+ *      displayed points are decimated and re-index whenever range OR metric
+ *      changes (Δ views are never thinned), so a displayed position would
+ *      silently come to mean a different date.
+ *   §4 (DriverFuturesChart) is handed an already-sliced, undecimated window, so
+ *      indices there are window-relative and are cleared when the range moves.
+ *
+ * `b` is null while the second anchor is still being picked.
+ */
+export interface ChartSelection {
+  participant: string;
+  a: number;
+  b: number | null;
 }
 
 /** Fixed across BOTH themes — series colour must never shift mid-analysis. */
+/** 1 -> 1st, 13 -> 13th. Mirrors signals.ordinal() so percentile text matches
+ *  the CLI and the backtest output word for word. */
+export function ordinal(n: number | null | undefined): string {
+  if (n == null) return "n/a";
+  const i = Math.round(n);
+  const suffix =
+    i % 100 >= 10 && i % 100 <= 20
+      ? "th"
+      : { 1: "st", 2: "nd", 3: "rd" }[i % 10] ?? "th";
+  return `${i}${suffix}`;
+}
+
 export const PV_PARTICIPANTS = ["Client", "DII", "FII", "Pro"] as const;
 export type ParticipantName = (typeof PV_PARTICIPANTS)[number];
 

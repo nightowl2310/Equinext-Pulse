@@ -75,6 +75,34 @@
   /* The navbar is a permanently dark plate in BOTH themes, so it can
      never resolve through --ink (which inverts). */
   --nav-bg: #12151C;
+
+  /* ── Signal status roles ──────────────────────────────────────────────
+     MODE-INVARIANT by design: unlike --ink-bull/--ink-bear these four hexes
+     are identical in both themes. Each clears 3:1 against BOTH surfaces
+     (#FFFFFF and the dark #131A22) — measured 3.63-5.52 on white, 3.17-4.83
+     on dark — so no separate dark step is needed and there is no second set
+     to drift out of sync.
+
+     These are RESERVED. They are never reused as a series colour, and they are
+     never the only cue: every appearance carries an icon and a text label.
+     That pairing is mandatory because the set does not clear the categorical
+     adjacent-pair test — warning vs good separates at only dE 5.0 under
+     protanopia, and critical vs warning at dE 14.7 for normal vision. That is
+     acceptable for a set of MUTUALLY EXCLUSIVE states rendered one at a time
+     with a label; it would not be acceptable for four series on one chart.
+
+     Status colour is confined to dots, borders and tints. Text always resolves
+     through --ink / --ink-soft / --ink-muted. */
+  --status-good: #158A4E;
+  --status-warning: #B8791A;
+  --status-critical: #C0362C;
+  --status-info: #2C7BB6;
+  /* Tints DO differ per mode — the same alpha reads much heavier on a dark
+     plate than on white. */
+  --status-good-tint: rgba(21, 138, 78, 0.09);
+  --status-warning-tint: rgba(184, 121, 26, 0.10);
+  --status-critical-tint: rgba(192, 54, 44, 0.09);
+  --status-info-tint: rgba(44, 123, 182, 0.09);
 }
 
 .dark {
@@ -124,6 +152,15 @@
   --bar-long: #F0B429;
   --bar-short: #8FA3B8;
   --nav-bg: #080B0F;
+
+  /* Status HUES are deliberately NOT re-stepped here — see :root. They already
+     clear 3:1 on this surface, and a second set would be one more thing to keep
+     in sync. Only the tints are raised: the same alpha washes heavier on a dark
+     plate, so the light values disappear against #131A22. */
+  --status-good-tint: rgba(21, 138, 78, 0.20);
+  --status-warning-tint: rgba(184, 121, 26, 0.20);
+  --status-critical-tint: rgba(192, 54, 44, 0.20);
+  --status-info-tint: rgba(44, 123, 182, 0.20);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);

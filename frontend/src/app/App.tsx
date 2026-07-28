@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type BookMode,
+  type ChartSelection,
   type MetricKey,
   type ParticipantSeries,
   type ParticipantsData,
@@ -15,6 +16,7 @@ import {
   sliceParticipantsData,
 } from "./lib/series";
 import { ParticipantChart, type RenderMode } from "./components/ParticipantChart";
+import SaturationStrip from "./components/SaturationStrip";
 
 type Tab = "daily" | "weekly" | "monthly";
 type Section = "weekly" | "participant" | "oi";
@@ -449,12 +451,16 @@ function DriverFuturesChart({
   data,
   hover,
   setHover,
+  selection,
+  setSelection,
   tall,
   instrument,
 }: {
   data: ParticipantsData;
   hover: number | null;
   setHover: (i: number | null) => void;
+  selection: ChartSelection | null;
+  setSelection: (s: ChartSelection | null) => void;
   tall?: boolean;
   instrument: string;
 }) {
@@ -614,14 +620,63 @@ function DriverFuturesChart({
   }
   const fY = (v: number) => futBottom - ((v - flo) / (fhi - flo)) * (futBottom - futTop);
 
+  // ONE clientX → day-index conversion, shared by hover and click so the
+  // crosshair and the anchor you drop can never land on different days.
+  const iAt = (clientX: number, rect: DOMRect) => {
+    if (N < 2) return 0;
+    const i = Math.round(((clientX - rect.left - plotL) / plotW) * (N - 1));
+    return Math.max(0, Math.min(N - 1, i));
+  };
+
   const onMove = (e: React.MouseEvent) => {
     if (!svgRef.current || N < 2) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    let i = Math.round(((px - plotL) / plotW) * (N - 1));
-    i = Math.max(0, Math.min(N - 1, i));
-    setHover(i);
+    setHover(iAt(e.clientX, svgRef.current.getBoundingClientRect()));
   };
+
+  // ── measurement selection ────────────────────────────────────────────────
+  // This chart is handed an already-sliced, undecimated window, so anchors are
+  // window-relative indices — and the parent clears them whenever range moves.
+  const sel = selection;
+  const selP = sel?.participant ?? null;
+  const selA = sel && sel.a >= 0 && sel.a < N ? sel.a : null;
+  // While the second anchor is pending the crosshair previews it live.
+  const selBRaw = sel ? (sel.b ?? hover) : null;
+  const selB = selBRaw !== null && selBRaw >= 0 && selBRaw < N ? selBRaw : null;
+  const bandLo = selA !== null && selB !== null ? Math.min(selA, selB) : null;
+  const bandHi = selA !== null && selB !== null ? Math.max(selA, selB) : null;
+
+  const onClick = (e: React.MouseEvent) => {
+    if (!svgRef.current || N < 2) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const i = iAt(e.clientX, rect);
+    // The pending branch MUST stay first: were the dismiss guard below it, the
+    // second click of a new measurement would cancel instead of locking B.
+    if (sel && sel.b === null) return setSelection({ ...sel, b: i });
+    // A COMPLETED measurement is dismissed by the next click, so getting back to
+    // plain hovering never requires finding Esc or the Clear button. Starting a
+    // fresh span is therefore click-to-dismiss, click-to-anchor.
+    if (sel) return setSelection(null);
+
+    // A fresh measurement: the line you clicked is whichever participant sits
+    // nearest the pointer vertically on that day.
+    const y = e.clientY - rect.top;
+    let pick: string | null = null;
+    let bestD = Infinity;
+    for (const p of PV_PARTICIPANTS) {
+      const v = data.participants[p][IK][i];
+      if (v === null || v === undefined) continue;
+      const d = Math.abs(fY(v) - y);
+      if (d < bestD) {
+        bestD = d;
+        pick = p;
+      }
+    }
+    if (pick) setSelection({ participant: pick, a: i, b: null });
+  };
+
+  const anchors: { i: number; locked: boolean }[] = [];
+  if (selA !== null) anchors.push({ i: selA, locked: true });
+  if (selB !== null && selB !== selA) anchors.push({ i: selB, locked: sel?.b !== null && sel?.b !== undefined });
 
   const thursdays = data.expiry.map((e, i) => (e ? i : -1)).filter((i) => i >= 0);
   const ticks: number[] = [];
@@ -719,7 +774,21 @@ function DriverFuturesChart({
             style={{ display: "block", touchAction: "none" }}
             onMouseMove={onMove}
             onMouseLeave={() => setHover(null)}
+            onClick={onClick}
           >
+            {/* measured band — first, so every line stays legible on top of it */}
+            {bandLo !== null && bandHi !== null && selP && (
+              <rect
+                x={xOf(bandLo)}
+                y={niftyTop}
+                width={Math.max(1.5, xOf(bandHi) - xOf(bandLo))}
+                height={ribbonBottom - niftyTop}
+                fill={PV_COLORS[selP]}
+                opacity={0.14}
+                pointerEvents="none"
+              />
+            )}
+
             {thursdays.map((i) => (
               <line key={"t" + i} x1={xOf(i)} x2={xOf(i)} y1={niftyTop} y2={futBottom} stroke={MUTED} strokeWidth={0.6} opacity={0.14} />
             ))}
@@ -744,10 +813,19 @@ function DriverFuturesChart({
               const series = data.participants[p][IK];
               const v = series[active];
               const isDrv = driver?.key === p;
+              // The measured stretch of the picked line, redrawn heavier on top
+              // of the ordinary stroke — that is the "selected part".
+              const measured =
+                p === selP && bandLo !== null && bandHi !== null
+                  ? pvSegments(series.slice(bandLo, bandHi + 1), (i) => xOf(bandLo + i), fY)
+                  : [];
               return (
-                <g key={p}>
+                <g key={p} opacity={sel && p !== selP ? 0.26 : 1}>
                   {pvSegments(series, xOf, fY).map((pts, si) => (
                     <polyline key={si} points={pts} fill="none" stroke={PV_COLORS[p]} strokeWidth={1.5} strokeLinejoin="round" />
+                  ))}
+                  {measured.map((pts, si) => (
+                    <polyline key={"m" + si} points={pts} fill="none" stroke={PV_COLORS[p]} strokeWidth={3.6} strokeLinejoin="round" strokeLinecap="round" />
                   ))}
                   {v !== null && (
                     <circle
@@ -804,6 +882,47 @@ function DriverFuturesChart({
               strokeDasharray="3 3"
             />
 
+            {/* measurement anchors — on the picked line AND the NIFTY panel */}
+            {selP &&
+              anchors.map((an, ai) => {
+                const av = data.participants[selP][IK][an.i];
+                const nv = data.nifty[an.i];
+                return (
+                  <g key={"anc" + ai} pointerEvents="none">
+                    <line
+                      x1={xOf(an.i)}
+                      x2={xOf(an.i)}
+                      y1={niftyTop}
+                      y2={ribbonBottom}
+                      stroke={PV_COLORS[selP]}
+                      strokeWidth={1.4}
+                      strokeDasharray={an.locked ? undefined : "3 3"}
+                      opacity={0.9}
+                    />
+                    {nv !== null && (
+                      <circle
+                        cx={xOf(an.i)}
+                        cy={nY(nv)}
+                        r={4}
+                        fill={an.locked ? TEAL : "var(--surface-card)"}
+                        stroke={TEAL}
+                        strokeWidth={1.6}
+                      />
+                    )}
+                    {av !== null && (
+                      <circle
+                        cx={xOf(an.i)}
+                        cy={fY(av)}
+                        r={5}
+                        fill={an.locked ? PV_COLORS[selP] : "var(--surface-card)"}
+                        stroke={PV_COLORS[selP]}
+                        strokeWidth={2}
+                      />
+                    )}
+                  </g>
+                );
+              })}
+
             {ticks.map((i) => (
               <text
                 key={"x" + i}
@@ -820,6 +939,97 @@ function DriverFuturesChart({
           </svg>
         )}
       </div>
+
+      {/* ── measurement readout ────────────────────────────────────────────
+          Its OWN block, deliberately not folded into the header row above:
+          that row falls back to `hover ?? N-1`, so leaving the chart would
+          snap it to the latest day and silently rewrite the locked numbers. */}
+      {sel && selP && selA !== null && (() => {
+        const ia = selA;
+        const ib = selB; // locked B, or the live preview while picking
+        const pending = sel.b === null;
+        const sessions = ib === null ? null : Math.abs(ib - ia);
+        // No percentage off a zero base — that is Infinity, not a move.
+        const pctOf = (a: number | null, b: number | null) => {
+          if (a === null || b === null || a === 0) return "";
+          const p = ((b - a) / Math.abs(a)) * 100;
+          return ` (${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(2)}%)`;
+        };
+        const rows: { key: string; color: string; a: number | null; b: number | null; price: boolean; picked: boolean }[] = [
+          { key: "NIFTY 50", color: TEAL, a: data.nifty[ia], b: ib === null ? null : data.nifty[ib], price: true, picked: false },
+          ...DF_ROW_ORDER.map((p) => ({
+            key: p,
+            color: PV_COLORS[p],
+            a: data.participants[p][IK][ia],
+            b: ib === null ? null : data.participants[p][IK][ib],
+            price: false,
+            picked: p === selP,
+          })),
+        ];
+        const cell = (v: number | null, price: boolean) => (v === null ? "—" : price ? priceStr(v) : num(v));
+
+        return (
+          <div
+            className="mt-4 rounded-xl overflow-hidden shrink-0"
+            style={{ border: `1px solid ${PV_COLORS[selP]}55`, background: "var(--surface-subtle)", fontFamily: "'DM Mono', monospace" }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
+              <span className="inline-flex items-center gap-2 text-xs" style={{ color: INK }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: PV_COLORS[selP], display: "inline-block" }} />
+                <b>{selP}</b>
+                <span style={{ color: MUTED }}>
+                  {pending
+                    ? "· click a second point to measure"
+                    : `· ${sessions} session${sessions === 1 ? "" : "s"} apart · click the chart to dismiss`}
+                </span>
+              </span>
+              <button
+                onClick={() => setSelection(null)}
+                className="rounded-md border border-border px-2 py-0.5 text-[11px]"
+                style={{ color: MUTED, background: "var(--surface-card)" }}
+              >
+                Clear (Esc)
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[420px]">
+                <thead>
+                  <tr style={{ color: MUTED }}>
+                    <th className="text-left font-normal px-4 py-2"> </th>
+                    <th className="text-right font-normal px-3 py-2 whitespace-nowrap">{data.dateDisplay[ia]}</th>
+                    <th className="text-right font-normal px-3 py-2 whitespace-nowrap">{ib === null ? "—" : data.dateDisplay[ib]}</th>
+                    <th className="text-right font-normal px-4 py-2">Δ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const d = r.a !== null && r.b !== null ? r.b - r.a : null;
+                    return (
+                      <tr key={r.key} style={{ borderTop: "1px solid var(--border)", background: r.picked ? `${PV_COLORS[selP]}18` : "transparent" }}>
+                        <td className="px-4 py-2" style={{ color: MUTED }}>
+                          <span className="inline-flex items-center gap-2">
+                            <span style={{ width: 9, height: 9, borderRadius: "50%", background: r.color, display: "inline-block" }} />
+                            {r.key}
+                          </span>
+                        </td>
+                        <td className="text-right px-3 py-2" style={{ color: INK }}>{cell(r.a, r.price)}</td>
+                        <td className="text-right px-3 py-2" style={{ color: INK }}>{cell(r.b, r.price)}</td>
+                        <td
+                          className="text-right px-4 py-2 whitespace-nowrap"
+                          style={{ color: d === null || d === 0 ? MUTED : d > 0 ? GREEN : RED }}
+                        >
+                          {d === null ? "—" : r.price ? (d > 0 ? "+" : "−") + Math.abs(d).toFixed(2) : sgn(d)}
+                          <span style={{ color: MUTED }}>{pctOf(r.a, r.b)}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* participant table (FIXED order — rows never reshuffle) + the verdict */}
       <div className="mt-4 md:mt-6 grid gap-5 shrink-0" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
@@ -935,7 +1145,8 @@ function DriverFuturesChart({
 // matplotlib PNGs (long_short_<inst>_<participant>_<date>.png) frozen on one
 // date: a bitmap can't follow the theme toggle, and it went stale the moment the
 // scraper ran. Both problems disappear by drawing it here — colours resolve
-// through --bar-long / --bar-short, and the date is always the file's last day.
+// through PV_COLORS (one hue per participant, shared with §3/§4/§5), and the
+// date is always the file's last day.
 const LS_INSTRUMENTS: { key: string; label: string; long: keyof ParticipantSeries; short: keyof ParticipantSeries }[] = [
   { key: "futures", label: "Index Futures", long: "futuresLong", short: "futuresShort" },
   { key: "calls", label: "Index Calls", long: "callsLong", short: "callsShort" },
@@ -951,7 +1162,17 @@ function lsCount(v: number): string {
 
 /** One participant's long-vs-short split, normalised to 100%. Fixed viewBox, so
  *  it scales with its card without measuring anything. */
-function ParticipantCard({ actor, long, short }: { actor: string; long: number | null; short: number | null }) {
+function ParticipantCard({
+  actor,
+  color,
+  long,
+  short,
+}: {
+  actor: string;
+  color: string;
+  long: number | null;
+  short: number | null;
+}) {
   const total = (long ?? 0) + (short ?? 0);
   const has = long !== null && short !== null && total > 0;
   const lp = has ? ((long as number) / total) * 100 : 0;
@@ -959,8 +1180,17 @@ function ParticipantCard({ actor, long, short }: { actor: string; long: number |
   // plot band: y=150 is 0%, y=34 is 100%
   const y0 = 150;
   const yOf = (pct: number) => y0 - (pct / 100) * (y0 - 34);
-  const bar = (x: number, pct: number, fill: string) => (
-    <rect x={x} y={yOf(pct)} width={52} height={Math.max(0, y0 - yOf(pct))} fill={fill} />
+  // Hue carries WHO (the card's participant, same key as §3/§4/§5); solid-vs-faded
+  // carries the long/short split, which is also given by bar position and the
+  // axis label under each — so the split never rests on opacity alone.
+  //
+  // The faded leg is 0.65, not a lighter-looking 0.45: measured against the dark
+  // card, 0.45 leaves the short bar at 2.4:1 and 0.65 clears 3:1 for all four
+  // hues. (On the light card no opacity reaches 3:1 — the base hues are only
+  // 2.2–2.6:1 on white — so the count and % printed above every bar are doing
+  // the work there, and must stay.)
+  const bar = (x: number, pct: number, opacity: number) => (
+    <rect x={x} y={yOf(pct)} width={52} height={Math.max(0, y0 - yOf(pct))} fill={color} opacity={opacity} />
   );
   return (
     <div className="rounded-2xl border border-border p-3" style={{ background: "var(--surface-card)" }}>
@@ -982,8 +1212,8 @@ function ParticipantCard({ actor, long, short }: { actor: string; long: number |
               </text>
             </g>
           ))}
-          {bar(62, lp, "var(--bar-long)")}
-          {bar(148, sp, "var(--bar-short)")}
+          {bar(62, lp, 1)}
+          {bar(148, sp, 0.65)}
           {[
             { x: 88, pct: lp, raw: long as number, label: "Long" },
             { x: 174, pct: sp, raw: short as number, label: "Short" },
@@ -1015,6 +1245,7 @@ function LongShortChart({ data, instrument }: { data: ParticipantsData; instrume
         <ParticipantCard
           key={a}
           actor={a}
+          color={PV_COLORS[a]}
           long={data.participants[a]?.[inst.long]?.[i] ?? null}
           short={data.participants[a]?.[inst.short]?.[i] ?? null}
         />
@@ -1554,6 +1785,11 @@ const DOSSIER_INSTS = [
   { key: "puts", label: "Puts", word: "puts", longLabel: "Option Index Put Long", netGroup: "Option Index Put", section: "PUT" },
 ];
 const DOSSIER_PARTS = ["Pro", "FII", "Client", "DII"];
+// Participant chips carry PV_COLORS, which is fixed across BOTH themes — so the
+// ink on them must be fixed too. `var(--surface-page)` would flip to near-white
+// in light mode and land at 2.2–2.6:1 on these mid-tone hues; this near-black
+// measures 6.9–8.5:1 against all four, so the chip reads in either theme.
+const DOSSIER_CHIP_INK = "#12151C";
 const DNAME: Record<string, { full: string; caps: string; short: string }> = {
   Pro: { full: "Proprietary desks", caps: "THE PROS", short: "PRO" },
   FII: { full: "Foreign institutions", caps: "THE FOREIGNERS", short: "FII" },
@@ -1742,12 +1978,16 @@ function ParticipantDossier() {
     return `${dir}; ${calls}; ${puts}.`;
   };
 
-  // horizontal diverging bar-chart geometry
-  const labelW = 66;
+  // horizontal diverging bar-chart geometry.
+  // Both gutters are sized to the WIDEST string they must hold, not to the
+  // typical one: at 66/96 the longest labels ("CLIENT", "122,286 sold") ran into
+  // each other on a big one-day move, which is exactly the day you most want to
+  // read. 92 clears the swatch + a 6-character name; 130 clears "+122,286 bought".
+  const labelW = 92;
   const rowH = 40;
   const chartH = sorted.length * rowH + 8;
   const cx = labelW + Math.max(1, w - labelW) / 2; // zero centre line
-  const half = Math.max(20, (w - labelW) / 2 - 96); // room for the value labels
+  const half = Math.max(20, (w - labelW) / 2 - 130); // room for the value labels
   const maxAbs = Math.max(1, ...sorted.map((b) => Math.abs(b.chg)));
   const barLen = (v: number) => (Math.abs(v) / maxAbs) * half;
 
@@ -1825,10 +2065,26 @@ function ParticipantDossier() {
                 const label = pos ? `+${fmt(b.chg)} bought` : `${fmt(Math.abs(b.chg))} sold`;
                 return (
                   <g key={b.p}>
+                    {/* Swatch, because the row label sits half a chart-width away
+                        from its own bar — without it the colour has nothing to
+                        attach the name to. */}
+                    <rect x={4} y={y + (rowH - 14) / 2 - 5} width={10} height={10} rx={2} fill={PV_COLORS[b.p]} />
                     <text x={labelW - 10} y={y + (rowH - 14) / 2} fontSize={14} textAnchor="end" dominantBaseline="middle" fill={INK} style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>
                       {DNAME[b.p].short}
                     </text>
-                    <rect x={bx} y={y} width={Math.max(1, len)} height={rowH - 14} fill={pos ? INK : "var(--hairline)"} rx={2} />
+                    {/* Colour carries WHO; the side of the centre line, the word
+                        "bought"/"sold" and the row label all carry WHAT — so the
+                        chart still reads with no colour at all. Sellers sit at
+                        55% to keep the buyer the story, as the mono version did. */}
+                    <rect
+                      x={bx}
+                      y={y}
+                      width={Math.max(1, len)}
+                      height={rowH - 14}
+                      fill={PV_COLORS[b.p]}
+                      opacity={pos ? 1 : 0.55}
+                      rx={2}
+                    />
                     <text
                       x={pos ? bx + len + 8 : bx - 8}
                       y={y + (rowH - 14) / 2}
@@ -1863,13 +2119,24 @@ function ParticipantDossier() {
               <div key={p} className="flex items-start gap-3 pb-3 border-b border-border/40 last:border-0">
                 <span
                   className="shrink-0 text-xs uppercase tracking-wider font-bold rounded px-2 py-1 mt-0.5"
-                  style={{ background: "var(--ink)", color: "var(--surface-page)", fontFamily: "'DM Mono', monospace" }}
+                  style={{ background: PV_COLORS[p], color: DOSSIER_CHIP_INK, fontFamily: "'DM Mono', monospace" }}
                 >
                   {DNAME[p].short}
                 </span>
                 <div className="min-w-0 text-sm" style={{ color: "var(--ink-soft)" }}>
+                  {/* Same green-up / red-down tone the tables in this file use, so
+                      the day's move is findable in a dense monospace paragraph.
+                      Built by loop rather than repeated inline — three near
+                      identical clauses had to stay in sync by hand before. */}
                   <span style={{ fontFamily: "'DM Mono', monospace" }}>
-                    Futures net {longShort(d.futures.net)} ({chgStr(d.futures.chg)} today). Calls net {longShort(d.calls.net)} ({chgStr(d.calls.chg)}). Puts net {longShort(d.puts.net)} ({chgStr(d.puts.chg)}). Gross longs — futures {fmt(d.futures.long ?? 0)}, calls {fmt(d.calls.long ?? 0)}, puts {fmt(d.puts.long ?? 0)}.
+                    {DOSSIER_INSTS.map((inst, k) => (
+                      <span key={inst.key}>
+                        {inst.label} net {longShort(d[inst.key].net)} (
+                        <span style={{ color: toneOf(d[inst.key].chg), fontWeight: 600 }}>{chgStr(d[inst.key].chg)}</span>
+                        {k === 0 ? " today" : ""}).{" "}
+                      </span>
+                    ))}
+                    Gross longs — futures {fmt(d.futures.long ?? 0)}, calls {fmt(d.calls.long ?? 0)}, puts {fmt(d.puts.long ?? 0)}.
                   </span>
                   <span className="block mt-1 text-xs font-medium" style={{ color: INK }}>
                     {readFor(p)}
@@ -1901,6 +2168,10 @@ function ParticipantView() {
   const [pvData, setPvData] = useState<ParticipantsData | null>(null);
   const [pvFailed, setPvFailed] = useState(false);
   const [pvHover, setPvHover] = useState<number | null>(null);
+  // Two-anchor measurement. Lifted for the same reason as `hover`: both charts
+  // render twice (inline + overlay) and a local state would leave the overlay
+  // showing nothing. Separate per chart — §3 and §4 measure different things.
+  const [pvSel, setPvSel] = useState<ChartSelection | null>(null);
   const [pvFull, setPvFull] = useState(false);
   const [bookMode, setBookMode] = useState<BookMode>("main"); // §4: net / gross-long / gross-short
   const [metric, setMetric] = useState<MetricKey>("futures"); // which instrument panel
@@ -1911,6 +2182,7 @@ function ParticipantView() {
 
   // "Who derived the move" — its own hover + full-screen, reusing the SAME pvData.
   const [dfHover, setDfHover] = useState<number | null>(null);
+  const [dfSel, setDfSel] = useState<ChartSelection | null>(null);
   const [dfFull, setDfFull] = useState(false);
   const [dfInst, setDfInst] = useState<string>("futures"); // §5: futures / calls / puts
 
@@ -1932,25 +2204,29 @@ function ParticipantView() {
     };
   }, []);
 
-  // Esc closes the full-screen overlay; while EITHER overlay is open, lock the
-  // page behind it so the home screen never scrolls under the full-screen view.
+  // Esc clears a live measurement FIRST and only then closes an overlay —
+  // otherwise clearing a selection you made in full screen would eject you from
+  // full screen. While EITHER overlay is open, lock the page behind it so the
+  // home screen never scrolls under the full-screen view.
   useEffect(() => {
-    if (!pvFull) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPvFull(false);
+      if (e.key !== "Escape") return;
+      if (pvFull) {
+        if (pvSel) setPvSel(null);
+        else setPvFull(false);
+        return;
+      }
+      if (dfFull) {
+        if (dfSel) setDfSel(null);
+        else setDfFull(false);
+        return;
+      }
+      setPvSel(null);
+      setDfSel(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pvFull]);
-
-  useEffect(() => {
-    if (!dfFull) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDfFull(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dfFull]);
+  }, [pvFull, dfFull, pvSel, dfSel]);
 
   useEffect(() => {
     if (!pvFull && !dfFull) return;
@@ -1971,11 +2247,14 @@ function ParticipantView() {
 
   // Changing range invalidates both hover indices (they address the OLD, longer
   // array). Clear them in the same handler rather than in an effect, so no render
-  // ever runs with an out-of-bounds index.
+  // ever runs with an out-of-bounds index. §4's measurement anchors are
+  // window-relative and go with them; §3's are RAW indices and survive — it
+  // re-resolves them, and says so when one falls outside the new window.
   const applyRange = (k: RangeKey) => {
     setRange(k);
     setPvHover(null);
     setDfHover(null);
+    setDfSel(null);
   };
 
   // Range selector — sibling of the mode selector below, same markup and styling.
@@ -2065,16 +2344,19 @@ function ParticipantView() {
                 </button>
               ))}
             </div>
-            {/* legend */}
+            {/* Legend. Each card is drawn in its OWN participant colour now, so
+                this can no longer be two fixed hues — it shows the solid/faded
+                split instead, and the participant key lives on the card titles. */}
             <div className="flex items-center gap-5 text-xs" style={{ fontFamily: "'DM Mono', monospace", color: "var(--ink-soft)" }}>
               <span className="inline-flex items-center gap-2">
-                <span style={{ width: 13, height: 13, background: "var(--bar-long)", borderRadius: 3, display: "inline-block" }} />
+                <span style={{ width: 13, height: 13, background: INK, borderRadius: 3, display: "inline-block" }} />
                 Long
               </span>
               <span className="inline-flex items-center gap-2">
-                <span style={{ width: 13, height: 13, background: "var(--bar-short)", borderRadius: 3, display: "inline-block" }} />
+                <span style={{ width: 13, height: 13, background: INK, opacity: 0.65, borderRadius: 3, display: "inline-block" }} />
                 Short
               </span>
+              <span style={{ color: MUTED }}>· each card in its participant&apos;s colour</span>
             </div>
           </div>
         </SectionHeader>
@@ -2142,6 +2424,10 @@ function ParticipantView() {
               className="rounded-2xl border border-border p-5 md:p-7"
               style={{ background: "var(--surface-card)" }}
             >
+              {/* Signal above the chart: it is a reading, and the chart below is
+                  the evidence you check it against. Renders nothing when the
+                  payload has no `saturation` key (older exports). */}
+              <SaturationStrip data={pvData} />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {bookSelector}
                 <div className="flex flex-wrap items-center gap-3">
@@ -2168,6 +2454,8 @@ function ParticipantView() {
                   render={renderMode}
                   hover={pvHover}
                   setHover={setPvHover}
+                  selection={pvSel}
+                  setSelection={setPvSel}
                 />
               </div>
             </div>
@@ -2219,6 +2507,8 @@ function ParticipantView() {
               render={renderMode}
               hover={pvHover}
               setHover={setPvHover}
+              selection={pvSel}
+              setSelection={setPvSel}
               tall
             />
           </div>
@@ -2264,7 +2554,16 @@ function ParticipantView() {
                   ⤢ Full screen
                 </button>
               </div>
-              {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} instrument={dfInst} />}
+              {pvWindow && (
+                <DriverFuturesChart
+                  data={pvWindow}
+                  hover={dfHover}
+                  setHover={setDfHover}
+                  selection={dfSel}
+                  setSelection={setDfSel}
+                  instrument={dfInst}
+                />
+              )}
             </div>
           )}
         </div>
@@ -2302,7 +2601,17 @@ function ParticipantView() {
             </div>
           </div>
           <div style={{ flex: "1 1 0", minHeight: 0 }}>
-            {pvWindow && <DriverFuturesChart data={pvWindow} hover={dfHover} setHover={setDfHover} tall instrument={dfInst} />}
+            {pvWindow && (
+              <DriverFuturesChart
+                data={pvWindow}
+                hover={dfHover}
+                setHover={setDfHover}
+                selection={dfSel}
+                setSelection={setDfSel}
+                tall
+                instrument={dfInst}
+              />
+            )}
           </div>
         </div>
       )}
