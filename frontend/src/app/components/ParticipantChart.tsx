@@ -319,13 +319,16 @@ export function ParticipantChart({
           />
         )}
 
-        {/* ── cycle legs ── accumulation/distribution bands + avg-price dashed
-            lines for the currently-measured participant only. Legs are
-            contiguous (each turn ends one leg and starts the next) and there
-            are dozens per participant, so drawing all four participants'
-            legs at once would tile the whole chart; instead this only draws
-            once a participant is picked via the measurement selection, using
-            that participant's own legs. */}
+        {/* ── cycle legs ── accumulation/distribution bands spanning both panels
+            (price strip + participant panel) mark the leg's date range, plus a
+            dashed line at the leg's OI-weighted average NIFTY close — drawn on
+            the price strip, since it is a price, not a contract count — for
+            the currently-measured participant only. Legs are contiguous (each
+            turn ends one leg and starts the next) and there are dozens per
+            participant, so drawing all four participants' legs at once would
+            tile the whole chart; instead this only draws once a participant is
+            picked via the measurement selection, using that participant's own
+            legs. */}
         {data.cycles && selP && (() => {
           const legs = data.cycles.legs[selP];
           if (!legs?.length) return null;
@@ -343,17 +346,17 @@ export function ParticipantChart({
               <g key={`${selP}-cycle-${li}`} pointerEvents="none">
                 <rect
                   x={Math.min(x0, x1)}
-                  y={mainTop}
+                  y={PAD_T}
                   width={Math.max(1, Math.abs(x1 - x0))}
-                  height={mainH}
+                  height={niftyH + 26 + mainH}
                   fill={fill}
                   opacity={0.09}
                 />
                 <line
                   x1={x0}
                   x2={x1}
-                  y1={mainY(leg.avgPrice)}
-                  y2={mainY(leg.avgPrice)}
+                  y1={niftyY(leg.avgPrice)}
+                  y2={niftyY(leg.avgPrice)}
                   stroke={PV_COLORS[selP]}
                   strokeWidth="1.4"
                   strokeDasharray="4 3"
