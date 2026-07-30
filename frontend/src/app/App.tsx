@@ -17,6 +17,7 @@ import {
 } from "./lib/series";
 import { ParticipantChart, type RenderMode } from "./components/ParticipantChart";
 import PeakReversalCard from "./components/PeakReversalCard";
+import CycleStrip from "./components/CycleStrip";
 
 type Tab = "daily" | "weekly" | "monthly";
 type Section = "weekly" | "participant" | "oi";
@@ -2423,7 +2424,10 @@ function ParticipantView() {
               Loading strategies…
             </div>
           ) : (
-            <PeakReversalCard data={pvData} />
+            <>
+              <PeakReversalCard data={pvData} />
+              <CycleStrip data={pvData} />
+            </>
           )}
         </div>
       </section>
