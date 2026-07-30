@@ -245,6 +245,15 @@ def write_participants_json(dates, close, series, out_path):
     machine = signals.build_machine_block(list(dates), _closes, _shorts)
     if machine is not None:
         payload["machine"] = machine
+
+    # Position cycles: confirmed peak/trough turns in each participant's net
+    # long-futures book, with an OI-weighted avg NIFTY price per leg. Additive
+    # key, same absence contract as saturation/machine.
+    _longs = {a: _ints(series[a]["fut_l"]) for a in ACTORS}
+    cycles = signals.build_cycles_block(list(dates), _closes, _longs)
+    if cycles is not None:
+        payload["cycles"] = cycles
+
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload), encoding="utf-8")

@@ -450,7 +450,7 @@ def build_saturation_block(
 
 
 # --- position cycles: OI-weighted avg price across each peak<->trough leg ----
-CYCLE_MIN_RETRACEMENT_PCT = 20.0   # a reversal must retrace this % of the leg's own range
+CYCLE_MIN_RETRACEMENT_PCT = 40.0   # a reversal must retrace this % of the leg's own range
 CYCLE_MIN_HOLD_SESSIONS = 3        # ...and hold for this many sessions to confirm
 CYCLE_ACTORS = ["Client", "DII", "FII", "Pro"]
 
