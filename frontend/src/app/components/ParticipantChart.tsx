@@ -133,6 +133,11 @@ export function ParticipantChart({
   }, [data, mode, metric, range]);
 
   const { idx, fullIdx, series, isDelta, decimated } = view;
+  const dateIndexOf = useMemo(() => {
+    const m = new Map<string, number>();
+    data.dates.forEach((d, i) => m.set(d, i));
+    return m;
+  }, [data.dates]);
   const niftyH = tall ? NIFTY_H_TALL : NIFTY_H;
   const mainH = tall ? MAIN_H_TALL : MAIN_H;
   const totalH = PAD_T + niftyH + 26 + mainH + AXIS_H;
@@ -313,6 +318,51 @@ export function ParticipantChart({
             pointerEvents="none"
           />
         )}
+
+        {/* ── cycle legs ── accumulation/distribution bands + avg-price dashed
+            lines for the currently-measured participant only. Legs are
+            contiguous (each turn ends one leg and starts the next) and there
+            are dozens per participant, so drawing all four participants'
+            legs at once would tile the whole chart; instead this only draws
+            once a participant is picked via the measurement selection, using
+            that participant's own legs. */}
+        {data.cycles && selP && (() => {
+          const legs = data.cycles.legs[selP];
+          if (!legs?.length) return null;
+          return legs.map((leg, li) => {
+            const startRaw = dateIndexOf.get(leg.startDate);
+            const endRaw = dateIndexOf.get(leg.endDate);
+            if (startRaw === undefined || endRaw === undefined || leg.avgPrice === null) return null;
+            const kStart = kOfRaw(startRaw);
+            const kEnd = kOfRaw(endRaw);
+            if (kStart === null || kEnd === null) return null;
+            const x0 = xOf(kStart);
+            const x1 = xOf(kEnd);
+            const fill = leg.type === "accumulation" ? "var(--ink-bull)" : "var(--ink-bear)";
+            return (
+              <g key={`${selP}-cycle-${li}`} pointerEvents="none">
+                <rect
+                  x={Math.min(x0, x1)}
+                  y={mainTop}
+                  width={Math.max(1, Math.abs(x1 - x0))}
+                  height={mainH}
+                  fill={fill}
+                  opacity={0.09}
+                />
+                <line
+                  x1={x0}
+                  x2={x1}
+                  y1={mainY(leg.avgPrice)}
+                  y2={mainY(leg.avgPrice)}
+                  stroke={PV_COLORS[selP]}
+                  strokeWidth="1.4"
+                  strokeDasharray="4 3"
+                  opacity={0.65}
+                />
+              </g>
+            );
+          });
+        })()}
 
         {/* ── NIFTY strip ── */}
         <text x={PAD_L} y={PAD_T - 2} fontSize="10" fill="var(--ink-muted)" fontFamily="'DM Mono', monospace">
