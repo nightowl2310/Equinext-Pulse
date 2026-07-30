@@ -450,8 +450,8 @@ def build_saturation_block(
 
 
 # --- position cycles: OI-weighted avg price across each peak<->trough leg ----
-CYCLE_MIN_RETRACEMENT_PCT = 40.0   # a reversal must retrace this % of the leg's own range
-CYCLE_MIN_HOLD_SESSIONS = 3        # ...and hold for this many sessions to confirm
+CYCLE_MIN_RETRACEMENT_PCT = 30.0   # a reversal must retrace this % of the leg's own range
+CYCLE_MIN_HOLD_SESSIONS = 10       # ...and hold for this many sessions to confirm
 CYCLE_ACTORS = ["Client", "DII", "FII", "Pro"]
 
 
@@ -466,9 +466,10 @@ def detect_turns(
     A pending extreme is confirmed as a peak/trough only once price retraces
     at least `min_retracement_pct` of the CURRENT leg's own range (the leg
     from the last confirmed turn to the pending extreme) AND the reversal
-    direction holds for `min_hold_sessions` consecutive sessions without a
-    new extreme invalidating it. Both conditions guard against single-day
-    whipsaws that a threshold-only or duration-only rule would each miss.
+    persists for `min_hold_sessions` consecutive sessions -- no session in
+    that confirmation window retraces back past the bar that triggered the
+    retracement check. Both conditions guard against single-day whipsaws
+    that a threshold-only or duration-only rule would each miss.
 
     The leg before the first confirmed turn and after the last confirmed turn
     are never reported by `cycle_legs` -- a legitimate leg needs both
@@ -512,7 +513,7 @@ def detect_turns(
             if retrace >= min_retracement_pct:
                 window = idxs[pos : pos + min_hold_sessions]
                 holds = len(window) >= min_hold_sessions and all(
-                    values[k] < extreme_v for k in window
+                    values[k] <= v for k in window
                 )
                 if holds:
                     _record(extreme_i, "peak")
@@ -531,7 +532,7 @@ def detect_turns(
         if retrace >= min_retracement_pct:
             window = idxs[pos : pos + min_hold_sessions]
             holds = len(window) >= min_hold_sessions and all(
-                values[k] > extreme_v for k in window
+                values[k] >= v for k in window
             )
             if holds:
                 _record(extreme_i, "trough")

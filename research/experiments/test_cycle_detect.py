@@ -31,7 +31,7 @@ def _check(name: str, got, expected) -> bool:
 def main() -> int:
     results = []
 
-    turns = signals.detect_turns(DATES, VALUES)
+    turns = signals.detect_turns(DATES, VALUES, min_retracement_pct=20.0, min_hold_sessions=3)
     results.append(_check(
         "detect_turns types",
         [(t["date"], t["type"], t["value"]) for t in turns],
