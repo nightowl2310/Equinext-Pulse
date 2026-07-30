@@ -3,103 +3,111 @@
   "available": true,
   "reason": null,
   "marketLabel": "NSE F&O",
-  "generatedAt": "2026-07-26T19:00:14+05:30",
-  "generatedAtDisplay": "26 Jul 2026, 7:00 PM IST",
+  "generatedAt": "2026-07-30T19:00:27+05:30",
+  "generatedAtDisplay": "30 Jul 2026, 7:00 PM IST",
   "asOf": {
-    "iso": "2026-07-24",
-    "display": "24 Jul 2026"
+    "iso": "2026-07-29",
+    "display": "29 Jul 2026"
   },
   "disclaimer": "Positioning read only - not investment advice.",
   "footnote": "Moves selected by absolute change (size); % shown alongside as context - OI is quantity-driven.",
   "dateA": {
-    "iso": "2026-07-24",
-    "display": "24 Jul 2026 (Fri)",
-    "dateOnly": "24 Jul 2026",
-    "weekday": "Fri",
+    "iso": "2026-07-29",
+    "display": "29 Jul 2026 (Wed)",
+    "dateOnly": "29 Jul 2026",
+    "weekday": "Wed",
     "expiry": false
   },
   "dateB": {
-    "iso": "2026-07-23",
-    "display": "23 Jul 2026 (Thu)",
-    "dateOnly": "23 Jul 2026",
-    "weekday": "Thu",
+    "iso": "2026-07-28",
+    "display": "28 Jul 2026 (Tue)",
+    "dateOnly": "28 Jul 2026",
+    "weekday": "Tue",
     "expiry": false
   },
-  "headline": "Pro adding index put shorts +160,093 contracts (+20.8%)",
-  "note": "Client hidden - biggest move 488,059 is 0.5x their typical 936,163 (needs 1.5x)",
+  "headline": "Pro adding index put shorts +285,489 contracts (+58.3%)",
+  "note": "Client hidden - biggest move 1,278,359 is 1.4x their typical 927,687 (needs 1.5x)",
   "notes": [
-    "Client not shown: biggest move 488,059 is 0.5x their typical 936,163 (needs 1.5x)."
+    "Client not shown: biggest move 1,278,359 is 1.4x their typical 927,687 (needs 1.5x)."
   ],
   "actors": [
     {
       "name": "Pro",
       "coverage": false,
       "book": {
-        "longChange": 74648,
-        "longPct": 1.28,
-        "shortChange": -15902,
-        "shortPct": -0.29
+        "longChange": 616764,
+        "longPct": 20.86,
+        "shortChange": 654611,
+        "shortPct": 26.5
       },
       "moves": [
         {
           "field": "Option Index Put Short",
-          "oldVal": 769727,
-          "newVal": 929820,
-          "change": 160093,
-          "pct": 20.8,
+          "oldVal": 489794,
+          "newVal": 775283,
+          "change": 285489,
+          "pct": 58.29,
           "note": "adding index put shorts"
         },
         {
           "field": "Option Index Put Long",
-          "oldVal": 957379,
-          "newVal": 1056485,
-          "change": 99106,
-          "pct": 10.35,
+          "oldVal": 553144,
+          "newVal": 738386,
+          "change": 185242,
+          "pct": 33.49,
           "note": "adding index put longs"
         },
         {
           "field": "Option Index Call Long",
-          "oldVal": 1233629,
-          "newVal": 1325852,
-          "change": 92223,
-          "pct": 7.48,
+          "oldVal": 532086,
+          "newVal": 715192,
+          "change": 183106,
+          "pct": 34.41,
           "note": "adding index call longs"
         },
         {
-          "field": "Future Stock Short",
-          "oldVal": 651370,
-          "newVal": 559694,
-          "change": -91676,
-          "pct": -14.07,
-          "note": "trimming stock futures shorts"
+          "field": "Option Stock Call Long",
+          "oldVal": 433001,
+          "newVal": 589174,
+          "change": 156173,
+          "pct": 36.07,
+          "note": "adding stock call longs"
         },
         {
           "field": "Option Stock Call Short",
-          "oldVal": 1782639,
-          "newVal": 1691504,
-          "change": -91135,
-          "pct": -5.11,
-          "note": "trimming stock call shorts"
+          "oldVal": 721946,
+          "newVal": 865693,
+          "change": 143747,
+          "pct": 19.91,
+          "note": "adding stock call shorts"
+        },
+        {
+          "field": "Option Stock Put Short",
+          "oldVal": 440067,
+          "newVal": 558032,
+          "change": 117965,
+          "pct": 26.81,
+          "note": "adding stock put shorts"
         }
       ]
     },
     {
       "name": "FII",
-      "coverage": false,
+      "coverage": true,
       "book": {
-        "longChange": 133165,
-        "longPct": 2.15,
-        "shortChange": 92058,
-        "shortPct": 1.62
+        "longChange": 188300,
+        "longPct": 3.96,
+        "shortChange": 63298,
+        "shortPct": 1.54
       },
       "moves": [
         {
-          "field": "Option Index Put Short",
-          "oldVal": 491106,
-          "newVal": 590382,
-          "change": 99276,
-          "pct": 20.21,
-          "note": "adding index put shorts"
+          "field": "Option Index Call Long",
+          "oldVal": 304843,
+          "newVal": 402321,
+          "change": 97478,
+          "pct": 31.98,
+          "note": "adding index call longs"
         }
       ]
     },
@@ -107,46 +115,46 @@
       "name": "DII",
       "coverage": true,
       "book": {
-        "longChange": 3756,
-        "longPct": 0.65,
-        "shortChange": 82166,
-        "shortPct": 1.75
+        "longChange": 21852,
+        "longPct": 5.42,
+        "shortChange": 72126,
+        "shortPct": 1.68
       },
       "moves": [
         {
-          "field": "Future Stock Short",
-          "oldVal": 4228114,
-          "newVal": 4311708,
-          "change": 83594,
-          "pct": 1.98,
-          "note": "adding stock futures shorts"
+          "field": "Option Stock Call Short",
+          "oldVal": 76768,
+          "newVal": 128890,
+          "change": 52122,
+          "pct": 67.9,
+          "note": "adding stock call shorts"
         }
       ]
     }
   ],
   "total": {
-    "field": "Option Index Put Long",
-    "oldVal": 4173172,
-    "newVal": 4854184,
-    "change": 681012
+    "field": "Total Long Contracts",
+    "oldVal": 16038310,
+    "newVal": 18106703,
+    "change": 2068393
   },
   "read": {
-    "score": 0.262,
+    "score": 0.369,
     "tilt": "BULLISH",
     "signals": [
       {
-        "text": "FII adding index put shorts +99,276",
+        "text": "Pro adding index put shorts +285,489",
         "sentiment": "bullish"
       },
       {
-        "text": "Pro adding index put shorts +160,093",
-        "sentiment": "bullish"
-      },
-      {
-        "text": "FII adding index put longs +87,926",
+        "text": "Pro adding index put longs +185,242",
         "sentiment": "bearish"
+      },
+      {
+        "text": "Pro adding index call longs +183,106",
+        "sentiment": "bullish"
       }
     ]
   },
-  "action": "Index positioning leaned constructive (score +0.26); strongest signal: FII adding index put shorts +99,276 contracts."
+  "action": "Index positioning leaned constructive (score +0.37); strongest signal: Pro adding index put shorts +285,489 contracts."
 }

@@ -194,7 +194,6 @@ export default function SaturationStrip({ data }: { data: ParticipantsData }) {
   const st = STATE[s.latest.state] ?? STATE.unknown;
   const stale = s.schemaVersion !== SIGNAL_SCHEMA_EXPECTED;
   const recent = s.episodes.slice(-6).reverse();
-  const v = s.validation;
 
   return (
     <section
@@ -286,14 +285,14 @@ export default function SaturationStrip({ data }: { data: ParticipantsData }) {
       {/* ── the caveats, at the same weight as the numbers ─────────────── */}
       <div
         className="px-5 py-3 border-t border-border flex items-start gap-2.5"
-        style={{ background: "var(--status-warning-tint)" }}
+        style={{ background: "var(--status-critical-tint)" }}
       >
         <span
           aria-hidden
           className="inline-flex items-center justify-center rounded-full font-bold shrink-0 mt-0.5"
           style={{
             width: 14, height: 14,
-            background: "var(--status-warning)", color: "#fff",
+            background: "var(--status-critical)", color: "#fff",
             fontSize: 10, lineHeight: 1,
           }}
         >
@@ -301,16 +300,18 @@ export default function SaturationStrip({ data }: { data: ParticipantsData }) {
         </span>
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink-soft)" }}>
           <strong style={{ color: "var(--ink)" }}>
-            Survives all five attacks ({v?.attacksSurvived ?? "5/5"}) — with two caveats that do not go away.
+            Not validated — it beats buy &amp; hold but not buying the same dip.
           </strong>{" "}
-          <strong style={{ color: "var(--ink)" }}>One:</strong> the {s.horizon}-session horizon was chosen after
-          scanning 12 threshold/horizon combinations, and the 20-session version fails 3 of 5. Four cells pass and
-          they form one contiguous block, but this was selected, not predicted.{" "}
-          <strong style={{ color: "var(--ink)" }}>Two:</strong> it raises return without reducing drawdown
-          (&minus;37.8% for both rule and benchmark) because it sizes <em>up</em> into a market that has just
-          fallen. It is a return signal, not downside protection. Reproduce with{" "}
+          This rule passes all five attacks against buy &amp; hold (15.83%/yr vs 12.08%). But a crowded short book
+          tends to occur <em>after</em> NIFTY has fallen, and dips mean-revert &mdash; so the benchmark that matters
+          is a plain dip-buyer. Against an episode-matched one it scores <strong style={{ color: "var(--ink)" }}>4/5
+          at 1Y and 3Y, 2/5 at 6M</strong>, failing block permutation both times (p=0.139, p=0.136): its edge over
+          dip-buying is not distinguishable from randomly-timed exposure. Adding this filter to a dip-buyer scores
+          1/5 at 3Y. The horizon was also picked by scanning 12 combinations, and the 5/5 is start-date sensitive
+          (4/5 from 2019). Treat the reading below as a description of positioning, not an instruction. Reproduce
+          with{" "}
           <code style={{ fontFamily: MONO, color: "var(--ink)" }}>
-            python -m research.experiments.phase3_shortbook
+            python -m research.experiments.phase4_control
           </code>
           .
         </p>

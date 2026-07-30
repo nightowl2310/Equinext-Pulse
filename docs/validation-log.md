@@ -555,6 +555,89 @@ sit in 2020–21, so this is a prior, not a finding.
 
 ---
 
+## 2026-07-28 — P2: the CONTROL test P1 never ran — **saturation FAILS it**
+
+Reproduce: `python -m research.experiments.phase4_control`
+
+**This entry demotes the P1 result above. P1 stands as written — it is not
+withdrawn — but the benchmark it used was too easy and this says so.**
+
+Question put by the user: *"FIIs generally increase their short when the market
+is down."* If that coupling is strong, a crowded short book is a restatement of
+"NIFTY has fallen", dips mean-revert, and the whole signal is buy-the-dip in OI
+clothing. Every one of P1's five attacks used **buy-and-hold** as the benchmark.
+None asked whether the rule beats **buying the same dip without looking at OI.**
+
+### P2a — the coupling itself is weak, which favours the signal
+
+| measure | value |
+|---|---|
+| corr(daily change in FII short, NIFTY return) | −0.220 |
+| corr(short-book percentile, NIFTY % off 250d high) | **−0.059** |
+
+FII does add shorts on down days, weakly. But the *extreme* in the book is
+essentially uncorrelated with how far the market has fallen. A crowded short book
+is **not** mechanically "NIFTY is down". The user's hypothesis is true day-to-day
+and does not contaminate the state variable.
+
+### P2b — head to head, matched on episode count
+
+Controls matched so the dip-buyer fires as often as the OI rule (comparing an
+8-episode rule against a 114-episode one confounds selectivity with skill).
+Identical clustering, entry, hold, tilt and metric. Benchmark is the control's
+**size series**, not cash. Shared 750-day warm-up so all slices align.
+
+| window | OI episodes | matched dip control | OI vs buy&hold | **OI vs dip** | **dip AND OI vs dip** |
+|---|---|---|---|---|---|
+| 6M | 20 | −2.0% off high (20 eps) | 4/5 | **2/5** | **2/5** |
+| 1Y | 13 | −1.0% off high (13 eps) | 4/5 | 4/5 · perm **p=0.139** | 4/5 · era split fails |
+| 3Y | 8 | −11.5% off high (9 eps) | 4/5 | 4/5 · perm **p=0.136** | **1/5** |
+
+**No configuration passes 5/5 against the control.** 1Y and 3Y reach 4/5 and both
+fail on the **same attack — block permutation** — meaning the OI rule's edge over
+a dip-buyer is not distinguishable from randomly-timed exposure of the same
+shape. That is precisely the attack that previously exposed a "signal" which was
+really just holding cash.
+
+At 6M the OI rule is actively **worse** than the dip-buyer (2/5, full-sample edge
+−0.014). At 3Y, **adding** the OI filter to a dip-buyer scores 1/5.
+
+### P2c — a second fragility, found incidentally
+
+P1 scored 5/5 evaluating from 2017 (250-day warm-up). Re-run identically but
+starting 2019 (750-day warm-up, needed so the 3Y window is comparable), the
+same rule scores **4/5**. The 5/5 was sensitive to the evaluation start date.
+
+### Verdict
+
+**Short-book saturation beats buy-and-hold and does NOT beat buying the same
+dip.** It is not established that the participant-OI data adds anything over a
+price-only rule. The honest description is: *a dip-buying rule with an OI-flavoured
+trigger, whose OI component has not been shown to contribute.*
+
+**Actioned, not just noted:** `signals.VALIDATION["saturation"]` demoted from
+`validated 5/5` to `NOT VALIDATED`, and the dashboard card now leads with the
+control failure instead of the 5/5. A signal that fails its control must not keep
+rendering a green badge.
+
+### Caveat on the control itself, stated so it is not oversold
+
+Matching by episode count forced the 6M and 1Y controls to shallow depths (−2.0%
+and −1.0% off the high), which are not sensible "dip-buyers" in isolation — with
+>10-session clustering, a −1% threshold still collapses to 13 episodes. Only the
+3Y control (−11.5%) is a natural deep-dip rule, and that is the pairing where the
+incremental test is worst (1/5). A depth-matched rather than count-matched control
+is the obvious follow-up; it would likely be kinder to the OI rule at 6M/1Y, and
+it would not change the permutation failures, which are the binding result.
+
+### What would rescue it
+
+The rule may still be a useful *dip filter* even if it is not independent signal —
+"buy this dip, not that one" is a weaker claim than "OI predicts returns" and was
+not tested here. That is the next honest question, not another parameter sweep.
+
+---
+
 ## 2026-07-28 — Walk-forward prediction of PARTICIPANT moves — **DEAD vs naive**
 
 Question: can we predict what each participant does next, daily and weekly?

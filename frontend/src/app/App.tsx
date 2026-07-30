@@ -16,7 +16,7 @@ import {
   sliceParticipantsData,
 } from "./lib/series";
 import { ParticipantChart, type RenderMode } from "./components/ParticipantChart";
-import SaturationStrip from "./components/SaturationStrip";
+import PeakReversalCard from "./components/PeakReversalCard";
 
 type Tab = "daily" | "weekly" | "monthly";
 type Section = "weekly" | "participant" | "oi";
@@ -2389,10 +2389,49 @@ function ParticipantView() {
         </div>
       </section>
 
-      {/* ── 3 · NIFTY vs All Participants ── (was §4; old §3 removed) */}
-      <section id="sec-participants-nifty" className="pt-12 border-t border-border">
+      {/* ── 3 · Strategies ──
+          Its own section, deliberately ABOVE the participant chart. A signal is
+          a different kind of object from a chart: nested under the chart's
+          controls it read as a caption to the chart rather than a conclusion
+          drawn from it. This section grows as strategies are added. */}
+      <section id="sec-strategies" className="pt-12 border-t border-border">
         <SectionHeader
           n={3}
+          eyebrow="Strategies · signals derived from participant positioning"
+          title="Strategy signals"
+        >
+          <p className="mt-2 text-sm" style={{ color: "var(--ink-muted)", maxWidth: 640 }}>
+            Rules built on participant open interest, each with its live state, the reference period it
+            is measured against, and every historical firing it has produced. All are research
+            strategies under evaluation — the numbers are measured, not promises.
+          </p>
+        </SectionHeader>
+        <div className="mt-6 space-y-6">
+          {pvFailed ? (
+            <div
+              className="rounded-2xl border border-border px-7 py-8 text-sm"
+              style={{ background: "var(--surface-card)", color: "var(--ink-muted)" }}
+            >
+              Strategy data unavailable. Generate it with{" "}
+              <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
+            </div>
+          ) : !pvData ? (
+            <div
+              className="rounded-2xl border border-border px-7 py-8 text-sm"
+              style={{ background: "var(--surface-card)", color: "var(--ink-muted)" }}
+            >
+              Loading strategies…
+            </div>
+          ) : (
+            <PeakReversalCard data={pvData} />
+          )}
+        </div>
+      </section>
+
+      {/* ── 4 · NIFTY vs All Participants ── (was §4; old §3 removed) */}
+      <section id="sec-participants-nifty" className="pt-12 border-t border-border">
+        <SectionHeader
+          n={4}
           eyebrow="NIFTY vs All Participants"
           title="All four participants against NIFTY 50"
         >
@@ -2427,7 +2466,6 @@ function ParticipantView() {
               {/* Signal above the chart: it is a reading, and the chart below is
                   the evidence you check it against. Renders nothing when the
                   payload has no `saturation` key (older exports). */}
-              <SaturationStrip data={pvData} />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {bookSelector}
                 <div className="flex flex-wrap items-center gap-3">
@@ -2518,7 +2556,7 @@ function ParticipantView() {
       {/* ── 4 · Who derived the move ── (driver / absorber on the futures flow) */}
       <section id="sec-driver" className="pt-12 border-t border-border">
         <SectionHeader
-          n={4}
+          n={5}
           eyebrow={`Who derived the move · ${DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}`}
           title="Who drove each day — driver, absorber & conviction"
         >
@@ -2619,7 +2657,7 @@ function ParticipantView() {
       {/* ── 5 · The dossier — who holds what, and who moved ── */}
       <section id="sec-dossier" className="pt-12 border-t border-border">
         <SectionHeader
-          n={5}
+          n={6}
           eyebrow="Daily dossier · net-OI one-day change"
           title="The one-day read — who holds what"
         >

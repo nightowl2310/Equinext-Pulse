@@ -75,6 +75,233 @@ export interface SaturationBlock {
   validation: SignalValidation;
 }
 
+/** One FIRE event as SERVED by signals.build_machine_block. The card computes
+ *  its own (see runPeakReversal) so the threshold can be changed live; this type
+ *  describes the pre-computed default that ships in the payload. */
+export interface ServedMachineEvent {
+  date: string;
+  peakDate: string | null;
+  peak: number;
+  fireLevel: number;
+  shortBook: number;
+  offPeakPct: number;
+  niftyAt: number | null;
+  niftyAfter: number | null;
+  forwardPct: number | null;
+  complete: boolean;
+}
+
+/** The served machine's reading at ONE duration. */
+export interface ServedMachineDuration {
+  window: number;
+  state: "idle" | "active" | "armed" | "fired";
+  shortBook: number | null;
+  trailingPeak: number;
+  activateLevel: number;
+  pctOfPeak: number | null;
+  fireLevelIfPeakNow: number;
+  events: ServedMachineEvent[];
+  eventCount: number;
+  eventsUp: number;
+  eventsComplete: number;
+}
+
+/**
+ * Peak-reversal machine — enters on the ROLL-OVER, not the extreme.
+ * IDLE -> ACTIVE (book >= 90% of trailing peak) -> ARMED (stops making highs)
+ * -> FIRED (falls back to 90% of that peak). Evaluated per duration, because
+ * the "past peak" for a 1Y view is not the same number as for a 3Y view.
+ */
+export interface ServedMachineBlock {
+  schemaVersion: number;
+  actor: string;
+  activateFraction: number;
+  fireFraction: number;
+  hold: number;
+  correlation: {
+    dailyChangeVsReturn: number | null;
+    levelVsClose: number | null;
+  };
+  durations: Record<string, ServedMachineDuration>;
+  validation: SignalValidation;
+}
+
+// ─── peak-reversal machine, client side ──────────────────────────────────────
+//
+// Ported from signals.peak_reversal_machine so the activation threshold can be
+// changed in the UI and the NUMBERS re-run, not just the drawing. The Python
+// implementation stays the reference used by the backtests
+// (research/experiments/phase5_machine.py); at the default 90% the two agree on
+// event count and dates for every window — check with that script if this is
+// edited.
+
+export const MACHINE_WINDOWS: { key: string; label: string; sessions: number }[] = [
+  { key: "1M", label: "1M", sessions: 21 },
+  { key: "6M", label: "6M", sessions: 126 },
+  { key: "1Y", label: "1Y", sessions: 250 },
+  { key: "3Y", label: "3Y", sessions: 750 },
+  { key: "ALL", label: "All Time", sessions: Number.MAX_SAFE_INTEGER },
+];
+
+/** 40%…90% in 5-point steps. 90 is the researched default; the rest are the
+ *  user's own risk, which the dropdown says out loud. */
+export const ACTIVATION_CHOICES = [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+export const ACTIVATION_DEFAULT = 90;
+export const MACHINE_HOLD = 30;
+
+export type MachineState = "idle" | "active" | "armed" | "fired";
+
+export interface MachineEvent {
+  date: string;
+  peakDate: string | null;
+  peak: number;
+  shortBook: number;
+  offPeakPct: number;
+  niftyAt: number | null;
+  niftyAfter: number | null;
+  forwardPct: number | null;
+  complete: boolean;
+}
+
+export interface MachineResult {
+  state: MachineState;
+  shortBook: number | null;
+  trailingPeak: number;
+  activateLevel: number;
+  /** where today's book sits as a % of the trailing peak — the meter's position */
+  pctOfPeak: number | null;
+  runPeak: number;
+  fireLevel: number;
+  events: MachineEvent[];
+  eventsComplete: number;
+  eventsUp: number;
+  medianForward: number | null;
+  baselineMedian: number | null;
+  winRate: number | null;
+}
+
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * IDLE → ACTIVE (book ≥ frac of trailing peak) → ARMED (stops making new highs)
+ * → FIRED (falls back to frac of the peak it just made). A new high while ARMED
+ * lifts the peak and moves the fire level with it.
+ *
+ * Only information available on the day is used: `runPeak` is the running
+ * maximum so far, never the eventual maximum.
+ */
+export function runPeakReversal(
+  dates: string[],
+  close: (number | null)[],
+  book: (number | null)[],
+  sessions: number,
+  activateFrac: number,
+  hold: number = MACHINE_HOLD,
+): MachineResult {
+  const n = book.length;
+  const events: MachineEvent[] = [];
+  let state: MachineState = "idle";
+  let runPeak = 0;
+  let peakDate: string | null = null;
+  let cooldown = 0;
+  let trailingPeak = 0;
+
+  // rolling max over `sessions`; for ALL the window exceeds n so it is the
+  // all-time high to date
+  const peakAt = (i: number): number => {
+    const lo = Math.max(0, i - sessions + 1);
+    let mx = 0;
+    for (let k = lo; k <= i; k++) {
+      const v = book[k];
+      if (v != null && v > mx) mx = v;
+    }
+    return mx;
+  };
+
+  for (let i = 0; i < n; i++) {
+    const b = book[i];
+    const ref = peakAt(i);
+    trailingPeak = ref;
+    if (b == null || ref <= 0) continue;
+
+    if (state === "fired") {
+      cooldown -= 1;
+      if (cooldown <= 0 && b < activateFrac * ref) state = "idle";
+      continue;
+    }
+    if (state === "idle") {
+      if (b >= activateFrac * ref) {
+        state = "active";
+        runPeak = b;
+        peakDate = dates[i];
+      }
+    } else if (state === "active") {
+      if (b >= runPeak) {
+        runPeak = b;
+        peakDate = dates[i];
+      } else state = "armed";
+    } else if (state === "armed") {
+      if (b >= runPeak) {
+        runPeak = b;
+        peakDate = dates[i];
+        state = "active";
+      } else if (b <= activateFrac * runPeak) {
+        const j = Math.min(i + hold, n - 1);
+        const a = close[i];
+        const z = close[j];
+        events.push({
+          date: dates[i],
+          peakDate,
+          peak: Math.round(runPeak),
+          shortBook: Math.round(b),
+          offPeakPct: Math.round((b / runPeak - 1) * 1000) / 10,
+          niftyAt: a,
+          niftyAfter: z,
+          forwardPct: a == null || z == null || a === 0 ? null : Math.round((z / a - 1) * 10000) / 100,
+          complete: i + hold < n,
+        });
+        state = "fired";
+        cooldown = hold;
+      }
+    }
+  }
+
+  const done = events.filter((e) => e.complete && e.forwardPct != null);
+  const fwd = done.map((e) => e.forwardPct as number);
+
+  // unconditional forward move over the same horizon — without it a positive
+  // median means nothing, because NIFTY drifts up
+  const base: number[] = [];
+  for (let i = Math.min(sessions, 250); i < n - hold - 1; i++) {
+    const a = close[i];
+    const z = close[i + hold];
+    if (a != null && z != null && a !== 0) base.push((z / a - 1) * 100);
+  }
+
+  const i = n - 1;
+  const b = book[i];
+  return {
+    state,
+    shortBook: b ?? null,
+    trailingPeak,
+    activateLevel: Math.round(activateFrac * trailingPeak),
+    pctOfPeak: b != null && trailingPeak > 0 ? Math.round((b / trailingPeak) * 1000) / 10 : null,
+    runPeak: Math.round(runPeak),
+    fireLevel: Math.round(activateFrac * (runPeak || trailingPeak)),
+    events,
+    eventsComplete: done.length,
+    eventsUp: fwd.filter((v) => v > 0).length,
+    medianForward: median(fwd),
+    baselineMedian: median(base),
+    winRate: fwd.length ? fwd.filter((v) => v > 0).length / fwd.length : null,
+  };
+}
+
 /** Bump in lockstep with signals.SIGNAL_SCHEMA_VERSION. A mismatch is rendered
  *  as a visible warning rather than silently blank fields. */
 export const SIGNAL_SCHEMA_EXPECTED = 2;
@@ -91,6 +318,7 @@ export interface ParticipantsData {
   nifty: (number | null)[];
   participants: Record<string, ParticipantSeries>;
   saturation?: SaturationBlock; // additive; absent on older payloads
+  machine?: ServedMachineBlock; // additive; absent on older payloads
 }
 
 /**

@@ -233,13 +233,18 @@ def write_participants_json(dates, close, series, out_path):
     # rank, and the frontend renders nothing rather than guessing. Computed from
     # signals.py so the dashboard and the backtest can never disagree on what
     # "98th percentile" means.
-    saturation = signals.build_saturation_block(
-        list(dates),
-        [None if close[i] is None else float(close[i]) for i in range(len(dates))],
-        {a: _ints(series[a]["fut_s"]) for a in ACTORS},
-    )
+    _closes = [None if close[i] is None else float(close[i]) for i in range(len(dates))]
+    _shorts = {a: _ints(series[a]["fut_s"]) for a in ACTORS}
+
+    saturation = signals.build_saturation_block(list(dates), _closes, _shorts)
     if saturation is not None:
         payload["saturation"] = saturation
+
+    # Peak-reversal machine: the tradable form, evaluated at every duration the
+    # chart's range selector offers. Additive key, same absence contract.
+    machine = signals.build_machine_block(list(dates), _closes, _shorts)
+    if machine is not None:
+        payload["machine"] = machine
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload), encoding="utf-8")
