@@ -655,7 +655,7 @@ def build_cycles_block(
 ACTIVATE_FRAC = 0.90    # of the trailing peak -> start watching
 FIRE_FRAC = 0.90        # of the run peak      -> the reversal is confirmed
 MACHINE_HOLD = 30       # sessions the long is held after a fire
-WINDOWS = {"6M": 126, "1Y": 250, "3Y": 750}
+WINDOWS = {"1M": 21, "3M": 63, "6M": 126, "1Y": 250, "3Y": 750, "ALL": 10**9}
 
 
 def _trailing_peak(vals: list[Num], i: int, window: int) -> float | None:

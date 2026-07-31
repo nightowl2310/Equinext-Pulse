@@ -3,19 +3,19 @@
   "available": true,
   "reason": null,
   "marketLabel": "NSE F&O",
-  "generatedAt": "2026-07-30T19:00:27+05:30",
-  "generatedAtDisplay": "30 Jul 2026, 7:00 PM IST",
+  "generatedAt": "2026-07-31T14:26:56+05:30",
+  "generatedAtDisplay": "31 Jul 2026, 2:26 PM IST",
   "asOf": {
-    "iso": "2026-07-29",
-    "display": "29 Jul 2026"
+    "iso": "2026-07-30",
+    "display": "30 Jul 2026"
   },
   "disclaimer": "Positioning read only - not investment advice.",
   "footnote": "Moves selected by absolute change (size); % shown alongside as context - OI is quantity-driven.",
   "dateA": {
-    "iso": "2026-07-29",
-    "display": "29 Jul 2026 (Wed)",
-    "dateOnly": "29 Jul 2026",
-    "weekday": "Wed",
+    "iso": "2026-07-30",
+    "display": "30 Jul 2026 (Thu)",
+    "dateOnly": "30 Jul 2026",
+    "weekday": "Thu",
     "expiry": false
   },
   "dateB": {
@@ -25,7 +25,7 @@
     "weekday": "Thu",
     "expiry": true
   },
-  "headline": "Client trimming stock call longs -1,222,710 contracts (-49.3%)",
+  "headline": "Client trimming stock call longs -1,052,264 contracts (-42.4%)",
   "note": null,
   "notes": [],
   "actors": [
@@ -33,43 +33,27 @@
       "name": "Client",
       "coverage": false,
       "book": {
-        "longChange": -3110294,
-        "longPct": -25.33,
-        "shortChange": -2606269,
-        "shortPct": -28.78
+        "longChange": -2151822,
+        "longPct": -17.52,
+        "shortChange": -1751562,
+        "shortPct": -19.34
       },
       "moves": [
         {
           "field": "Option Stock Call Long",
           "oldVal": 2480021,
-          "newVal": 1257311,
-          "change": -1222710,
-          "pct": -49.3,
+          "newVal": 1427757,
+          "change": -1052264,
+          "pct": -42.43,
           "note": "trimming stock call longs"
         },
         {
           "field": "Option Index Call Long",
           "oldVal": 2891581,
-          "newVal": 2023947,
-          "change": -867634,
-          "pct": -30.01,
+          "newVal": 2275804,
+          "change": -615777,
+          "pct": -21.3,
           "note": "trimming index call longs"
-        },
-        {
-          "field": "Option Index Put Short",
-          "oldVal": 3299456,
-          "newVal": 2561131,
-          "change": -738325,
-          "pct": -22.38,
-          "note": "trimming index put shorts"
-        },
-        {
-          "field": "Option Index Call Short",
-          "oldVal": 2752062,
-          "newVal": 2015299,
-          "change": -736763,
-          "pct": -26.77,
-          "note": "trimming index call shorts"
         }
       ]
     },
@@ -77,47 +61,55 @@
       "name": "Pro",
       "coverage": false,
       "book": {
-        "longChange": -2088318,
-        "longPct": -36.88,
-        "shortChange": -2203381,
-        "shortPct": -41.36
+        "longChange": -1748004,
+        "longPct": -30.87,
+        "shortChange": -1826875,
+        "shortPct": -34.29
       },
       "moves": [
         {
           "field": "Option Stock Call Short",
           "oldVal": 1863590,
-          "newVal": 865693,
-          "change": -997897,
-          "pct": -53.55,
+          "newVal": 965736,
+          "change": -897854,
+          "pct": -48.18,
           "note": "trimming stock call shorts"
         },
         {
           "field": "Option Stock Call Long",
           "oldVal": 1380812,
-          "newVal": 589174,
-          "change": -791638,
-          "pct": -57.33,
+          "newVal": 666844,
+          "change": -713968,
+          "pct": -51.71,
           "note": "trimming stock call longs"
         }
       ]
     },
     {
       "name": "FII",
-      "coverage": true,
+      "coverage": false,
       "book": {
-        "longChange": -1858725,
-        "longPct": -27.35,
-        "shortChange": -1880073,
-        "shortPct": -31.1
+        "longChange": -1791663,
+        "longPct": -26.36,
+        "shortChange": -1760765,
+        "shortPct": -29.13
       },
       "moves": [
         {
           "field": "Future Stock Long",
           "oldVal": 4072069,
-          "newVal": 3510264,
-          "change": -561805,
-          "pct": -13.8,
+          "newVal": 3497629,
+          "change": -574440,
+          "pct": -14.11,
           "note": "trimming stock futures longs"
+        },
+        {
+          "field": "Future Stock Short",
+          "oldVal": 3419078,
+          "newVal": 2875340,
+          "change": -543738,
+          "pct": -15.9,
+          "note": "trimming stock futures shorts"
         }
       ]
     },
@@ -125,19 +117,19 @@
       "name": "DII",
       "coverage": true,
       "book": {
-        "longChange": -173238,
-        "longPct": -28.95,
-        "shortChange": -540853,
-        "shortPct": -11.02
+        "longChange": -162848,
+        "longPct": -27.21,
+        "shortChange": -515135,
+        "shortPct": -10.49
       },
       "moves": [
         {
-          "field": "Option Stock Call Short",
-          "oldVal": 408743,
-          "newVal": 128890,
-          "change": -279853,
-          "pct": -68.47,
-          "note": "trimming stock call shorts"
+          "field": "Future Stock Short",
+          "oldVal": 4468679,
+          "newVal": 4201679,
+          "change": -267000,
+          "pct": -5.97,
+          "note": "trimming stock futures shorts"
         }
       ]
     }
@@ -145,26 +137,26 @@
   "total": {
     "field": "Total Long Contracts",
     "oldVal": 25337279,
-    "newVal": 18106703,
-    "change": -7230576
+    "newVal": 19482942,
+    "change": -5854337
   },
   "read": {
-    "score": 0.172,
+    "score": 0.213,
     "tilt": "NEUTRAL",
     "signals": [
       {
-        "text": "FII trimming index put longs -406,507",
+        "text": "FII trimming index put longs -386,522",
         "sentiment": "bullish"
       },
       {
-        "text": "FII trimming index call shorts -355,247",
+        "text": "FII trimming index call shorts -314,922",
         "sentiment": "bullish"
       },
       {
-        "text": "FII trimming index put shorts -287,037",
+        "text": "FII trimming index call longs -231,295",
         "sentiment": "bearish"
       }
     ]
   },
-  "action": "Index positioning showed no clear lean (score +0.17); strongest signal: FII trimming index put longs -406,507 contracts."
+  "action": "Index positioning showed no clear lean (score +0.21); strongest signal: FII trimming index put longs -386,522 contracts."
 }

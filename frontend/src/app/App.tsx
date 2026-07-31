@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type BookMode,
   type ChartSelection,
@@ -16,11 +16,13 @@ import {
   sliceParticipantsData,
 } from "./lib/series";
 import { ParticipantChart, type RenderMode } from "./components/ParticipantChart";
-import PeakReversalCard from "./components/PeakReversalCard";
+import StrategyTeaser from "./components/StrategyTeaser";
+import StrategiesView from "./components/StrategiesView";
+import AsOfPicker from "./components/AsOfPicker";
 import CycleStrip from "./components/CycleStrip";
 
 type Tab = "daily" | "weekly" | "monthly";
-type Section = "weekly" | "participant" | "oi";
+type Section = "weekly" | "participant" | "strategies" | "oi";
 type Sentiment = "bullish" | "bearish";
 
 // ─── data contract ───────────────────────────────────────────────────────────
@@ -2161,12 +2163,33 @@ function ParticipantDossier() {
 }
 
 
-function ParticipantView() {
+function ParticipantView({
+  asOf,
+  onBounds,
+  onOpenStrategies,
+}: {
+  asOf: string | null;
+  onBounds: (first: string, last: string) => void;
+  onOpenStrategies: () => void;
+}) {
   const [lsInst, setLsInst] = useState("futures"); // Long/Short instrument selector
 
   // "NIFTY vs All Participants" — shared state lifted here so the inline card and
   // the full-screen overlay render the SAME ParticipantChart, always in sync.
-  const [pvData, setPvData] = useState<ParticipantsData | null>(null);
+  const [pvRaw, setPvRaw] = useState<ParticipantsData | null>(null);
+
+  // THE AS-OF WALL. Everything downstream — chart, cycles, strategy — sees only
+  // history up to the selected date, so the page can be read as it would have
+  // looked on that day. Truncating the shared payload once here is what makes
+  // that true everywhere at once; a per-component date filter would leave any
+  // component that forgot to apply it quietly showing the future.
+  const pvData = useMemo(() => {
+    if (!pvRaw) return null;
+    if (!asOf) return pvRaw;
+    let hi = pvRaw.dates.length - 1;
+    while (hi > 0 && pvRaw.dates[hi] > asOf) hi--;
+    return sliceParticipantsData(pvRaw, 0, hi);
+  }, [pvRaw, asOf]);
   const [pvFailed, setPvFailed] = useState(false);
   const [pvHover, setPvHover] = useState<number | null>(null);
   // Two-anchor measurement. Lifted for the same reason as `hover`: both charts
@@ -2197,7 +2220,8 @@ function ParticipantView() {
       .then((d: ParticipantsData) => {
         if (!alive) return;
         if (!d || !Array.isArray(d.dates) || d.dates.length < 2) throw new Error("empty");
-        setPvData(d);
+        setPvRaw(d);
+        onBounds(d.dates[0], d.dates[d.dates.length - 1]);
       })
       .catch(() => alive && setPvFailed(true));
     return () => {
@@ -2398,13 +2422,12 @@ function ParticipantView() {
       <section id="sec-strategies" className="pt-12 border-t border-border">
         <SectionHeader
           n={3}
-          eyebrow="Strategies · signals derived from participant positioning"
-          title="Strategy signals"
+          eyebrow="Signals & cycles · derived from participant positioning"
+          title="Signal summary"
         >
           <p className="mt-2 text-sm" style={{ color: "var(--ink-muted)", maxWidth: 640 }}>
-            Rules built on participant open interest, each with its live state, the reference period it
-            is measured against, and every historical firing it has produced. All are research
-            strategies under evaluation — the numbers are measured, not promises.
+            A short read on what the strategy engine sees today. The full method, signal history and
+            validation live on the Strategies page.
           </p>
         </SectionHeader>
         <div className="mt-6 space-y-6">
@@ -2425,7 +2448,7 @@ function ParticipantView() {
             </div>
           ) : (
             <>
-              <PeakReversalCard data={pvData} />
+              <StrategyTeaser data={pvData} onOpen={onOpenStrategies} />
               <CycleStrip data={pvData} />
             </>
           )}
@@ -2687,6 +2710,7 @@ const NAV_ITEMS: {
   soon?: boolean;
 }[] = [
   { label: "Participant vs Market", section: "participant" },
+  { label: "Strategies", section: "strategies" },
   { label: "Weekly Comparison", section: "weekly" },
   { label: "FII / DII Flows", soon: true },
   { label: "Option Chain", soon: true },
@@ -2716,6 +2740,15 @@ function initialTheme(): "light" | "dark" {
 export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(initialTheme);
   const [section, setSection] = useState<Section>("participant");
+
+  // AS-OF DATE. null = latest. Held at App level so the navbar control and every
+  // view share one wall; each view truncates its own payload to this date.
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [bounds, setBounds] = useState<{ first: string; last: string } | null>(null);
+  const onBounds = useCallback(
+    (first: string, last: string) => setBounds((b) => (b && b.first === first && b.last === last ? b : { first, last })),
+    [],
+  );
   const [activeTab, setActiveTab] = useState<Tab>("daily");
   const [data, setData] = useState<BriefData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2819,18 +2852,18 @@ export default function App() {
           })}
         </div>
 
-        {/* Timestamp — from the data file, not the browser clock.
-            "Updated" is when this JSON was written; it is a different day from
-            the trading date, so the two are labelled separately rather than
-            run together (which would imply a clock time on the trading day). */}
-        <div
-          className="ml-auto text-xs shrink-0 hidden sm:block"
-          style={{
-            fontFamily: "'DM Mono', monospace",
-            color: "rgba(255,255,255,0.32)",
-          }}
-        >
-          {data ? `${data.marketLabel} · Updated ${data.generatedAtDisplay}` : ""}
+        {/* As-of control, navbar variant — shares state with the hero chip.
+            Idle it reads the data file's own "Updated" stamp (when the JSON was
+            written, a different day from the trading date). Pinned, it reads the
+            date the page is walled to. */}
+        <div className="ml-auto shrink-0 hidden sm:block">
+          <AsOfPicker
+            asOf={asOf}
+            setAsOf={setAsOf}
+            bounds={bounds}
+            variant="nav"
+            idleLabel={data ? `${data.marketLabel} · Updated ${data.generatedAtDisplay}` : "Pick a date"}
+          />
         </div>
         </div>
       </nav>
@@ -2862,22 +2895,17 @@ export default function App() {
               NSE participant positioning, refreshed every trading morning.
             </p>
           </div>
-          <div
-            className="shrink-0 self-start md:self-auto text-xs px-3.5 py-2 rounded-lg border border-border"
-            style={{
-              fontFamily: "'DM Mono', monospace",
-              color: "var(--ink-muted)",
-              background: "rgba(18,21,28,0.03)",
-            }}
-          >
-            {/* The chip answers "which day is this brief about?" — that is a
-                trading DATE, not a clock time. The page's own freshness is the
-                navbar's "Updated …" stamp. */}
-            Data as of
-            <br />
-            <span className="text-foreground font-medium">
-              {data ? data.asOf.display : "—"}
-            </span>
+          {/* The chip answers "which day is this page about?" — a trading DATE,
+              not a clock time. It is now the handle for changing that day: pick
+              one and every view walls off everything after it. */}
+          <div className="shrink-0 self-start md:self-auto">
+            <AsOfPicker
+              asOf={asOf}
+              setAsOf={setAsOf}
+              bounds={bounds}
+              variant="hero"
+              idleLabel={data ? data.asOf.display : "—"}
+            />
           </div>
         </div>
       </div>
@@ -2889,7 +2917,16 @@ export default function App() {
         {section === "weekly" && <WeeklyComparisonView />}
 
         {/* Participant vs Market — NIFTY overlay + participant long/short */}
-        {section === "participant" && <ParticipantView />}
+        {section === "participant" && (
+          <ParticipantView
+            asOf={asOf}
+            onBounds={onBounds}
+            onOpenStrategies={() => setSection("strategies")}
+          />
+        )}
+
+        {/* Strategies — its own page, reached from the nav or the teaser card */}
+        {section === "strategies" && <StrategiesView asOf={asOf} onBounds={onBounds} />}
 
         {/* Open Interest — the daily/weekly/monthly participant brief */}
         {section === "oi" && (

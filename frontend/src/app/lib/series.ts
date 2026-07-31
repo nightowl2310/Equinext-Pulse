@@ -75,6 +75,27 @@ export interface SaturationBlock {
   validation: SignalValidation;
 }
 
+export interface CycleLeg {
+  type: "accumulation" | "distribution";
+  startDate: string;
+  endDate: string;
+  avgPrice: number | null;
+  oiStart: number;
+  oiEnd: number;
+  niftyStart: number | null;
+  niftyEnd: number | null;
+  durationSessions: number;
+  spread?: number;
+}
+
+export interface CyclesBlock {
+  schemaVersion: number;
+  minRetracementPct: number;
+  minHoldSessions: number;
+  legs: Record<string, CycleLeg[]>;
+  validation: SignalValidation;
+}
+
 /** One FIRE event as SERVED by signals.build_machine_block. The card computes
  *  its own (see runPeakReversal) so the threshold can be changed live; this type
  *  describes the pre-computed default that ships in the payload. */
@@ -137,11 +158,77 @@ export interface ServedMachineBlock {
 
 export const MACHINE_WINDOWS: { key: string; label: string; sessions: number }[] = [
   { key: "1M", label: "1M", sessions: 21 },
+  { key: "3M", label: "3M", sessions: 63 },
   { key: "6M", label: "6M", sessions: 126 },
   { key: "1Y", label: "1Y", sessions: 250 },
   { key: "3Y", label: "3Y", sessions: 750 },
   { key: "ALL", label: "All Time", sessions: Number.MAX_SAFE_INTEGER },
 ];
+
+/** Whose short book the strategy is run against. FII is the default. */
+export const STRATEGY_PARTICIPANTS = ["FII", "DII", "Pro", "Client"] as const;
+export const STRATEGY_PARTICIPANT_DEFAULT = "FII";
+
+/**
+ * Recommended windows are MEASURED, not chosen. A window earns the badge by
+ * clearing the unconditional baseline in BOTH halves of the sample AND with
+ * 2020+2022 removed, on at least 10 completed signals.
+ *
+ * THE STRATEGY IS NOT UNIVERSAL — this is the important finding here. Measured
+ * edge over baseline, forward 30 sessions (phase5_machine.py):
+ *
+ *   FII     1M -0.14  3M +0.35  6M +1.05*  1Y +0.16  3Y +3.94*  ALL +3.94
+ *   DII     1M +0.42  3M +0.84* 6M +1.09*  1Y -0.10  3Y -1.14   ALL -1.14
+ *   Pro     1M +0.38* 3M -0.85  6M -0.53   1Y -0.59  3Y -1.30   ALL -1.30
+ *   Client  1M -0.56  3M +0.48  6M -0.52   1Y -0.32  3Y -2.80   ALL -2.80
+ *                                                     (* = passes all three tests)
+ *
+ * It works on the institutions whose shorts get squeezed (FII, DII), weakly on
+ * prop desks, and NOT AT ALL on retail: Client's crowded shorts precede WORSE
+ * returns, with a 38% win rate at 3Y. That is consistent with the mechanism —
+ * retail shorts are not forced unwinds the way an institutional book is — but it
+ * means the Client tab must warn rather than quietly show numbers.
+ */
+export const MACHINE_RECOMMENDED: Record<
+  string,
+  { default: string; windows: Record<string, string>; caution?: string }
+> = {
+  FII: {
+    default: "3Y",
+    windows: {
+      "3Y": "Largest and steadiest edge (+3.94% over baseline), and the two halves of the sample barely differ (+5.78% vs +5.44%). Only 11 signals, so each one matters more.",
+      "6M": "Most signals of any stable window (30) at +1.05% over baseline, holding in both halves and with crisis years removed.",
+    },
+  },
+  DII: {
+    default: "6M",
+    windows: {
+      "6M": "Best DII window: +1.09% over baseline across 27 signals, an 85% win rate, and steady across both halves.",
+      "3M": "+0.84% over baseline on 33 signals with an 82% win rate — more signals, slightly smaller edge.",
+    },
+  },
+  Pro: {
+    default: "1M",
+    windows: {
+      "1M": "The only Pro window that clears the bar, and only just: +0.38% over baseline on 54 signals. Prop desks turn their book over too fast for longer windows to mean much.",
+    },
+    caution:
+      "Pro desks are the weakest fit for this strategy. Only the 1-month window beats doing nothing, and only by +0.38%. Every longer window is worse than a random day.",
+  },
+  Client: {
+    default: "3M",
+    windows: {},
+    caution:
+      "This strategy does NOT work on Client (retail). No window clears the bar, and the pattern inverts at longer lookbacks — at 3Y the edge is −2.80% with a 38% win rate. Retail shorts are not forced unwinds the way an institutional book is, so a crowded retail short is not a squeeze waiting to happen. Shown for comparison only.",
+  },
+};
+
+export function recommendedFor(participant: string) {
+  return MACHINE_RECOMMENDED[participant] ?? MACHINE_RECOMMENDED.FII;
+}
+
+/** @deprecated use recommendedFor(participant).default */
+export const MACHINE_WINDOW_DEFAULT = "3Y";
 
 /** 40%…90% in 5-point steps. 90 is the researched default; the rest are the
  *  user's own risk, which the dropdown says out loud. */
@@ -319,6 +406,7 @@ export interface ParticipantsData {
   participants: Record<string, ParticipantSeries>;
   saturation?: SaturationBlock; // additive; absent on older payloads
   machine?: ServedMachineBlock; // additive; absent on older payloads
+  cycles?: CyclesBlock; // additive; absent on older payloads
 }
 
 /**
