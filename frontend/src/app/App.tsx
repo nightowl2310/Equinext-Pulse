@@ -19,88 +19,9 @@ import { ParticipantChart, type RenderMode } from "./components/ParticipantChart
 import StrategyTeaser from "./components/StrategyTeaser";
 import StrategiesView from "./components/StrategiesView";
 import AsOfPicker from "./components/AsOfPicker";
-import CycleStrip from "./components/CycleStrip";
+import WeeklyComparison from "./components/WeeklyComparison";
 
-type Tab = "daily" | "weekly" | "monthly";
-type Section = "weekly" | "participant" | "strategies" | "oi";
-type Sentiment = "bullish" | "bearish";
-
-// ─── data contract ───────────────────────────────────────────────────────────
-// These types mirror, exactly, the JSON that analysis.py writes to
-// frontend/public/data/{daily,weekly,monthly}.json. This page does no maths:
-// every value below comes from the backend. See the README ("Data contract").
-//
-// `pct` is null (never 0, never Infinity) when the old value was 0 -> "N/A".
-
-interface Move {
-  field: string;
-  oldVal: number;
-  newVal: number;
-  change: number;
-  pct: number | null;
-  note: string; // e.g. "adding index call longs" — not rendered yet (see gap report)
-}
-
-interface Book {
-  longChange: number | null;
-  longPct: number | null;
-  shortChange: number | null;
-  shortPct: number | null;
-}
-
-interface Actor {
-  name: string;
-  coverage: boolean;
-  book: Book;
-  moves: Move[];
-}
-
-interface Signal {
-  text: string;
-  sentiment: Sentiment;
-}
-
-interface DateInfo {
-  iso: string;
-  display: string; // "09 Jul 2026 (Thu · expiry)" — pre-composed by the backend
-  dateOnly: string;
-  weekday: string;
-  expiry: boolean;
-}
-
-interface Total {
-  field: string;
-  oldVal: number;
-  newVal: number;
-  change: number;
-}
-
-interface Read {
-  score: number;
-  tilt: string;
-  signals: Signal[];
-}
-
-interface BriefData {
-  timeframe: Tab;
-  available: boolean;
-  reason: string | null;
-  marketLabel: string;
-  generatedAt: string;
-  generatedAtDisplay: string;
-  asOf: { iso: string; display: string };
-  dateA: DateInfo | null;
-  dateB: DateInfo | null;
-  headline: string | null;
-  note: string | null; // "Client hidden — …" when an actor was held back
-  notes: string[];
-  actors: Actor[];
-  total: Total | null;
-  read: Read | null;
-  action: string | null;
-  disclaimer: string;
-  footnote: string;
-}
+type Section = "weekly" | "participant" | "strategies";
 
 // ─── palette constants ───────────────────────────────────────────────────────
 const GREEN = "var(--ink-bull)";
@@ -121,13 +42,6 @@ function signed(v: number): string {
   if (v === 0) return "0";
   return (v > 0 ? "+" : "−") + fmt(v);
 }
-function pctStr(v: number | null): string {
-  // The backend sends null when the old value was 0, so a percentage would be
-  // meaningless. Show "N/A" rather than a fake number or Infinity.
-  if (v === null || v === undefined) return "N/A";
-  if (v === 0) return "0.0%";
-  return (v > 0 ? "+" : "") + v.toFixed(1) + "%";
-}
 /** Green up, red down, muted for flat/unknown — never colour a zero. */
 function toneOf(v: number | null): string {
   if (v === null || v === undefined || v === 0) return MUTED;
@@ -135,257 +49,6 @@ function toneOf(v: number | null): string {
 }
 
 // ─── sub-components ──────────────────────────────────────────────────────────
-
-function Gauge({ score }: { score: number }) {
-  const cx = 100;
-  const cy = 88;
-  const r = 65;
-  const theta = ((score + 1) / 2) * Math.PI;
-  const nx = cx - r * Math.cos(theta);
-  const ny = cy - r * Math.sin(theta);
-  const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
-
-  return (
-    <svg viewBox="0 0 200 100" className="w-full" aria-label={`Gauge: ${score}`}>
-      {/* Track */}
-      <path d={arcPath} fill="none" stroke="var(--grid)" strokeWidth="10" strokeLinecap="round" />
-      {/* Bearish end */}
-      <circle cx={cx - r} cy={cy} r="5" fill={RED} />
-      {/* Bullish end */}
-      <circle cx={cx + r} cy={cy} r="5" fill={GREEN} />
-      {/* Neutral tick */}
-      <circle cx={cx} cy={cy - r} r="3" fill="var(--hairline)" />
-      {/* Needle shaft */}
-      <line
-        x1={cx}
-        y1={cy}
-        x2={nx}
-        y2={ny}
-        stroke={INK}
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      {/* Needle tip */}
-      <circle cx={nx} cy={ny} r="5" fill={TEAL} />
-      {/* Hub */}
-      <circle cx={cx} cy={cy} r="4" fill={INK} />
-    </svg>
-  );
-}
-
-function BookChip({
-  label,
-  change,
-  pctV,
-}: {
-  label: string;
-  change: number | null;
-  pctV: number | null;
-}) {
-  if (change === null || change === undefined) return null; // backend had no total for this actor
-  const flat = change === 0;
-  const pos = change > 0;
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs"
-      style={{
-        fontFamily: "'DM Mono', monospace",
-        background: flat ? "var(--tint-flat)" : pos ? "var(--tint-bull)" : "var(--tint-bear)",
-        color: flat ? MUTED : pos ? GREEN : RED,
-        border: `1px solid ${flat ? "var(--grid)" : pos ? "var(--edge-bull)" : "var(--edge-bear)"}`,
-      }}
-    >
-      {label} {signed(change)} ({pctStr(pctV)})
-    </span>
-  );
-}
-
-function ActorCard({ actor }: { actor: Actor }) {
-  return (
-    <div
-      className="rounded-xl border border-border overflow-hidden"
-      style={{ background: "var(--surface-card)" }}
-    >
-      {/* Card header */}
-      <div className="px-6 pt-5 pb-4 border-b border-border">
-        <div className="flex items-center gap-2.5 mb-3">
-          <span
-            className="text-2xl font-semibold tracking-tight"
-            style={{ fontFamily: "'DM Sans', sans-serif", color: INK }}
-          >
-            {actor.name}
-          </span>
-          {actor.coverage && (
-            <span
-              className="text-xs uppercase tracking-widest border border-border rounded px-1.5 py-0.5"
-              style={{ color: "var(--ink-muted)" }}
-            >
-              coverage
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <BookChip label="Long" change={actor.book.longChange} pctV={actor.book.longPct} />
-          <BookChip label="Short" change={actor.book.shortChange} pctV={actor.book.shortPct} />
-        </div>
-      </div>
-
-      {/* Moves table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs min-w-[560px]">
-          <thead>
-            <tr className="border-b border-border" style={{ color: "var(--ink-muted)" }}>
-              <th className="text-left px-6 py-2.5 font-normal">Field</th>
-              <th className="text-right px-4 py-2.5 font-normal whitespace-nowrap">
-                Old → New
-              </th>
-              <th className="text-right px-4 py-2.5 font-normal">Change</th>
-              <th className="text-right px-4 py-2.5 font-normal">%</th>
-            </tr>
-          </thead>
-          <tbody style={{ fontFamily: "'DM Mono', monospace" }}>
-            {actor.moves.map((move, i) => (
-              <tr
-                key={i}
-                className="border-b border-border/40 last:border-0 transition-colors"
-                style={{ "--tw-bg-opacity": "1" } as React.CSSProperties}
-                onMouseEnter={(e) =>
-                  ((e.currentTarget as HTMLElement).style.background = BG)
-                }
-                onMouseLeave={(e) =>
-                  ((e.currentTarget as HTMLElement).style.background = "transparent")
-                }
-              >
-                <td className="px-6 py-2.5 whitespace-nowrap" style={{ color: "var(--ink-soft)" }}>
-                  {move.field}
-                </td>
-                <td
-                  className="px-4 py-2.5 text-right whitespace-nowrap"
-                  style={{ color: "var(--ink-muted)" }}
-                >
-                  {fmt(move.oldVal)} → {fmt(move.newVal)}
-                </td>
-                <td
-                  className="px-4 py-2.5 text-right font-medium whitespace-nowrap"
-                  style={{ color: toneOf(move.change) }}
-                >
-                  {signed(move.change)}
-                </td>
-                <td
-                  className="px-4 py-2.5 text-right whitespace-nowrap"
-                  style={{ color: toneOf(move.pct) }}
-                >
-                  {pctStr(move.pct)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function ReadPanel({ data }: { data: BriefData }) {
-  const read = data.read;
-  if (!read) return null;
-  const scoreDisplay = (read.score > 0 ? "+" : "") + read.score.toFixed(2);
-  return (
-    <div className="space-y-3">
-      {/* Gauge */}
-      <div
-        className="rounded-xl border border-border p-5"
-        style={{ background: "var(--surface-card)" }}
-      >
-        <p
-          className="text-xs uppercase tracking-widest mb-3"
-          style={{ color: "var(--ink-muted)" }}
-        >
-          Market Read
-        </p>
-        <Gauge score={read.score} />
-        <div className="text-center mt-1">
-          <span
-            className="text-sm font-semibold"
-            style={{ fontFamily: "'DM Sans', sans-serif", color: INK }}
-          >
-            {read.tilt} tilt
-          </span>
-          <span
-            className="text-xs ml-2"
-            style={{ fontFamily: "'DM Mono', monospace", color: TEAL }}
-          >
-            {scoreDisplay}
-          </span>
-        </div>
-        <p
-          className="text-xs text-center mt-1"
-          style={{ color: "var(--ink-muted)", fontFamily: "'DM Mono', monospace" }}
-        >
-          −1 bearish · 0 neutral · +1 bullish
-        </p>
-      </div>
-
-      {/* Signals */}
-      <div
-        className="rounded-xl border border-border p-5 space-y-3"
-        style={{ background: "var(--surface-card)" }}
-      >
-        <p
-          className="text-xs uppercase tracking-widest"
-          style={{ color: "var(--ink-muted)" }}
-        >
-          Signals
-        </p>
-        {read.signals.map((s, i) => (
-          <div key={i} className="flex items-start gap-2.5">
-            <span
-              className="shrink-0 text-xs uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded mt-0.5"
-              style={{
-                background: s.sentiment === "bullish" ? "var(--tint-bull)" : "var(--tint-bear)",
-                color: s.sentiment === "bullish" ? GREEN : RED,
-              }}
-            >
-              {s.sentiment}
-            </span>
-            <span
-              className="text-xs leading-relaxed"
-              style={{
-                fontFamily: "'DM Mono', monospace",
-                color: "var(--ink-soft)",
-              }}
-            >
-              {s.text}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Action */}
-      <div
-        className="rounded-xl border border-border p-5"
-        style={{ background: "var(--surface-card)" }}
-      >
-        <p
-          className="text-xs uppercase tracking-widest mb-2"
-          style={{ color: "var(--ink-muted)" }}
-        >
-          Action
-        </p>
-        <p className="text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-          {data.action}
-        </p>
-        <p
-          className="text-xs mt-3 pt-3 border-t border-border"
-          style={{ color: "var(--ink-muted)" }}
-        >
-          {data.disclaimer}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 
 function priceStr(v: number): string {
   return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -411,7 +74,6 @@ function pvSegments(
   if (cur.length > 1) segs.push(cur.join(" "));
   return segs;
 }
-
 
 // §5 runs on ONE instrument at a time. `inverted` marks the leg where a RISING
 // net position is bearish: buying puts is a bet on a fall, so a put build-up
@@ -1142,7 +804,6 @@ function DriverFuturesChart({
   );
 }
 
-
 // §1 — one long-vs-short balance card per PARTICIPANT, drawn as inline SVG from
 // the SAME participants_vs_nifty.json the other sections read. It used to be 12
 // matplotlib PNGs (long_short_<inst>_<participant>_<date>.png) frozen on one
@@ -1293,350 +954,17 @@ function SectionHeader({
   );
 }
 
-// ── Last-12-Tuesdays positioning summary (data: export_tuesday_summary.py) ──
-interface TueRow {
-  date: string;
-  display: string;
-  day: string;
-  net: Record<string, number | null>;
-  delta: Record<string, number | null>;
-  winner: string;
-  bias: string;
-}
-interface TueInstrument { label: string; biasPolarity: number; rows: TueRow[] }
-interface TueData {
-  asOf: string;
-  deltaBasis: string;
-  tuesdays: string[];
-  displays: string[];
-  actors: string[];
-  instruments: Record<string, TueInstrument>;
-}
-
-const TUE_ORDER = ["FII", "DII", "Pro", "Client"]; // table + legend order (matches the reference)
-const TUE_COLORS: Record<string, string> = {
-  FII: "#B08FE8",
-  DII: "#E8A33D",
-  Pro: "#4CC77C",
-  Client: "#3FA9F5",
-};
-const TUE_INSTRUMENTS: { key: string; label: string }[] = [
-  { key: "futures", label: "Index Futures" },
-  { key: "calls", label: "Index Calls" },
-  { key: "puts", label: "Index Puts" },
-];
-
-function compactNum(v: number | null): string {
-  if (v === null || v === undefined) return "—";
-  const sign = v < 0 ? "−" : "";
-  const a = Math.abs(v);
-  if (a >= 1_000_000) return `${sign}${(a / 1_000_000).toFixed(1)}M`;
-  if (a >= 1_000) return `${sign}${Math.round(a / 1_000)}k`;
-  return `${sign}${a}`;
-}
-function deltaStr(v: number | null): string {
-  if (v === null || v === undefined) return "—";
-  return (v > 0 ? "+" : "") + compactNum(v);
-}
-function biasVisual(bias: string): { color: string; bg: string; strong: boolean } {
-  const bull = bias.includes("Bullish");
-  const bear = bias.includes("Bearish");
-  return {
-    color: bull ? GREEN : bear ? RED : MUTED,
-    bg: bull ? "var(--tint-bull)" : bear ? "var(--tint-bear)" : "var(--tint-flat)",
-    strong: bias.startsWith("Strong"),
-  };
-}
-
-function TuesdayLineChart({ rows }: { rows: TueRow[] }) {
-  const [w, setW] = useState(0);
-  const [hover, setHover] = useState<number | null>(null);
-  const box = useRef<HTMLDivElement | null>(null);
-  const svg = useRef<SVGSVGElement | null>(null);
-
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const m = () => setW(el.clientWidth);
-    m();
-    const ro = new ResizeObserver(m);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const N = rows.length;
-  const height = 330;
-  const padL = 54;
-  const padR = 14;
-  const padT = 14;
-  const padB = 30;
-  const plotL = padL;
-  const plotR = Math.max(padL + 1, w - padR);
-  const plotW = plotR - plotL;
-  const plotT = padT;
-  const plotB = height - padB;
-  const plotH = plotB - plotT;
-  const xOf = (i: number) => plotL + (N <= 1 ? 0 : (i / (N - 1)) * plotW);
-
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const r of rows)
-    for (const a of TUE_ORDER) {
-      const v = r.net[a];
-      if (v == null) continue;
-      lo = Math.min(lo, v);
-      hi = Math.max(hi, v);
-    }
-  if (!isFinite(lo)) {
-    lo = 0;
-    hi = 1;
-  }
-  lo = Math.min(lo, 0);
-  hi = Math.max(hi, 0);
-  const range = hi - lo || 1;
-  lo -= range * 0.08;
-  hi += range * 0.08;
-  const yOf = (v: number) => plotB - ((v - lo) / (hi - lo)) * plotH;
-  const yticks = Array.from({ length: 5 }, (_, k) => lo + (k / 4) * (hi - lo));
-
-  const active = hover ?? N - 1;
-  const ar = rows[active];
-
-  const onMove = (e: React.MouseEvent) => {
-    if (!svg.current || N < 2) return;
-    const rect = svg.current.getBoundingClientRect();
-    let i = Math.round(((e.clientX - rect.left - plotL) / plotW) * (N - 1));
-    i = Math.max(0, Math.min(N - 1, i));
-    setHover(i);
-  };
-
-  const tickEvery = Math.ceil(N / 8);
-
-  return (
-    <div>
-      {/* legend + hovered-day readout (defaults to the latest Tuesday) */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 mb-3">
-        <div className="text-sm" style={{ fontFamily: "'DM Mono', monospace" }}>
-          <span style={{ color: INK, fontWeight: 600 }}>Tue {ar.display}</span>
-          <span style={{ color: MUTED }}>{hover === null ? " · latest" : ""} · net (contracts)</span>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {TUE_ORDER.map((a) => (
-            <span key={a} className="inline-flex items-center gap-1.5 text-sm" style={{ fontFamily: "'DM Mono', monospace" }}>
-              <span style={{ width: 10, height: 10, borderRadius: 2, background: TUE_COLORS[a], display: "inline-block" }} />
-              <span style={{ color: MUTED }}>{a === "Pro" ? "PRO" : a}</span>
-              <span style={{ color: TUE_COLORS[a], fontWeight: 600 }}>{compactNum(ar.net[a])}</span>
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div ref={box} className="w-full" style={{ position: "relative" }}>
-        {w > 0 && (
-          <svg
-            ref={svg}
-            width={w}
-            height={height}
-            style={{ display: "block", touchAction: "none" }}
-            onMouseMove={onMove}
-            onMouseLeave={() => setHover(null)}
-          >
-            {/* y gridlines + labels */}
-            {yticks.map((tv, i) => (
-              <g key={"y" + i}>
-                <line x1={plotL} x2={plotR} y1={yOf(tv)} y2={yOf(tv)} stroke={GRID} strokeWidth={0.7} opacity={0.7} />
-                <text x={plotL - 8} y={yOf(tv) + 3} fontSize={12} fill={MUTED} textAnchor="end" style={{ fontFamily: "'DM Mono', monospace" }}>
-                  {compactNum(Math.round(tv))}
-                </text>
-              </g>
-            ))}
-            {/* zero baseline emphasised */}
-            {lo < 0 && hi > 0 && (
-              <line x1={plotL} x2={plotR} y1={yOf(0)} y2={yOf(0)} stroke={MUTED} strokeWidth={1} opacity={0.55} />
-            )}
-            {/* x labels */}
-            {rows.map((r, i) =>
-              i % tickEvery === 0 || i === N - 1 ? (
-                <text key={"x" + i} x={xOf(i)} y={plotB + 18} fontSize={12} fill={MUTED} textAnchor="middle" style={{ fontFamily: "'DM Mono', monospace" }}>
-                  {r.display}
-                </text>
-              ) : null
-            )}
-            {/* crosshair */}
-            {hover !== null && (
-              <line x1={xOf(active)} x2={xOf(active)} y1={plotT} y2={plotB} stroke={INK} strokeWidth={1} opacity={0.5} strokeDasharray="3 3" />
-            )}
-            {/* one line per participant */}
-            {TUE_ORDER.map((a) => {
-              const pts = rows
-                .map((r, i) => (r.net[a] == null ? null : `${xOf(i)},${yOf(r.net[a] as number)}`))
-                .filter(Boolean)
-                .join(" ");
-              return <polyline key={a} points={pts} fill="none" stroke={TUE_COLORS[a]} strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />;
-            })}
-            {/* dots at the active Tuesday */}
-            {hover !== null &&
-              TUE_ORDER.map((a) =>
-                ar.net[a] == null ? null : (
-                  <circle key={"d" + a} cx={xOf(active)} cy={yOf(ar.net[a] as number)} r={3.5} fill={TUE_COLORS[a]} stroke="var(--surface-card)" strokeWidth={1.2} />
-                )
-              )}
-          </svg>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TuesdaySection() {
-  const [data, setData] = useState<TueData | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [inst, setInst] = useState<string>("futures");
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/data/tuesday_summary.json", { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      })
-      .then((d: TueData) => {
-        if (!alive) return;
-        if (!d || !d.instruments) throw new Error("empty");
-        setData(d);
-      })
-      .catch(() => alive && setFailed(true));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  if (failed) {
-    return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
-        Tuesday summary unavailable — run{" "}
-        <code style={{ fontFamily: "'DM Mono', monospace" }}>python export_tuesday_summary.py</code>.
-      </div>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
-        Loading summary…
-      </div>
-    );
-  }
-
-  const cur = data.instruments[inst];
-
-  return (
-    <div className="space-y-5">
-      {/* heading — out of any card, on the gray page background */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <p className="text-[20px] uppercase tracking-widest font-medium" style={{ color: MUTED }}>
-            Summary Table · last 12 Tuesdays
-          </p>
-          <span style={{ color: "#F4B400", letterSpacing: 1, fontSize: "1.15rem" }}>★★★★★</span>
-        </div>
-        <p className="text-2xl md:text-3xl leading-snug font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: INK }}>
-          <em>Tuesday-over-Tuesday positioning — what analysts read first</em>
-        </p>
-        <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 640 }}>
-          Each of the last 12 Tuesdays (to {data.asOf}) vs the Tuesday before it. Δ = change in
-          net position ({data.deltaBasis}). Winner = who moved most; Market Bias reads off the FII Δ.
-        </p>
-
-        {/* instrument toggle — drives both the table and the chart */}
-        <div className="inline-flex rounded-lg border border-border p-0.5 mt-4" style={{ background: "var(--surface-inset)" }}>
-          {TUE_INSTRUMENTS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setInst(t.key)}
-              className="px-3.5 py-1.5 rounded-md text-sm font-medium transition-all"
-              style={{
-                background: inst === t.key ? "var(--surface-raised)" : "transparent",
-                color: inst === t.key ? INK : "var(--ink-muted)",
-                boxShadow: inst === t.key ? "0 1px 3px rgba(18,21,28,0.08)" : "none",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* the table */}
-      <div className="rounded-2xl border border-border p-5 md:p-6" style={{ background: "var(--surface-card)" }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
-            <thead>
-              <tr className="border-b border-border" style={{ color: "var(--ink-muted)" }}>
-                <th className="text-left px-3 py-2.5 font-normal">Tuesday</th>
-                <th className="text-right px-3 py-2.5 font-normal">FII Δ</th>
-                <th className="text-right px-3 py-2.5 font-normal">DII Δ</th>
-                <th className="text-right px-3 py-2.5 font-normal">PRO Δ</th>
-                <th className="text-right px-3 py-2.5 font-normal">Client Δ</th>
-                <th className="text-left px-3 py-2.5 font-normal">Winner</th>
-                <th className="text-left px-3 py-2.5 font-normal">Market Bias</th>
-              </tr>
-            </thead>
-            <tbody style={{ fontFamily: "'DM Mono', monospace" }}>
-              {/* most-recent Tuesday on top; the latest row is highlighted */}
-              {[...cur.rows].reverse().map((r) => {
-                const bv = biasVisual(r.bias);
-                const latest = r.date === cur.rows[cur.rows.length - 1].date;
-                return (
-                  <tr
-                    key={r.date}
-                    className="border-b border-border/40 last:border-0"
-                    style={latest ? { background: "var(--surface-inset)" } : undefined}
-                  >
-                    <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: INK }}>{r.display}</td>
-                    {(["FII", "DII", "Pro", "Client"] as const).map((a) => (
-                      <td key={a} className="px-3 py-2.5 text-right whitespace-nowrap" style={{ color: toneOf(r.delta[a]) }}>
-                        {deltaStr(r.delta[a])}
-                      </td>
-                    ))}
-                    <td className="px-3 py-2.5 whitespace-nowrap font-medium" style={{ color: TUE_COLORS[r.winner] ?? INK }}>
-                      {r.winner === "Pro" ? "PRO" : r.winner}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span
-                        className="inline-block px-2 py-0.5 rounded-full text-xs"
-                        style={{ background: bv.bg, color: bv.color, fontWeight: bv.strong ? 700 : 500 }}
-                      >
-                        {r.bias}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-xs mt-4 pt-3 border-t border-border" style={{ color: "var(--ink-muted)" }}>
-          Immediately answers: who changed the most (Winner) · who dominated · what the bias was.
-          {inst === "puts" ? "  Puts: adding net long puts reads bearish, so the FII-Δ sign is inverted for bias." : ""}
-        </p>
-      </div>
-
-      {/* the line chart — net levels of all four participants across the 12 Tuesdays */}
-      <div className="rounded-2xl border border-border p-5 md:p-6" style={{ background: "var(--surface-card)" }}>
-        <p className="text-[20px] uppercase tracking-widest mb-3" style={{ color: MUTED }}>
-          {cur.label} · net position by participant (12 Tuesdays)
-        </p>
-        <TuesdayLineChart rows={cur.rows} />
-      </div>
-    </div>
-  );
-}
-
-// Home / first menu: the last-12-Tuesdays weekday comparison lives on its own page.
+// Home / first menu: weekday-over-weekday positioning.
+//
+// Replaces the old TuesdaySection, which read tuesday_summary.json. That file
+// only ever holds the last 12 Tuesdays, so it could not answer "compare a date
+// I choose", and it hard-coded Tuesday. WeeklyComparison derives the same
+// comparison client-side from the full archive instead, which makes both the
+// date and the weekday a choice.
 function WeeklyComparisonView() {
   return (
     <div className="space-y-8">
-      <TuesdaySection />
+      <WeeklyComparison />
     </div>
   );
 }
@@ -1656,6 +984,9 @@ function ParticipantReport() {
   const [data, setData] = useState<PRData | null>(null);
   const [failed, setFailed] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
+  // The report is the only place STOCK derivatives appear — every other view in
+  // the app is index-only. Collapsed by default so it matches them.
+  const [showStock, setShowStock] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -1695,6 +1026,19 @@ function ParticipantReport() {
   const activeDate = sel && data.reports[sel] ? sel : data.dates[data.dates.length - 1];
   const report = data.reports[activeDate];
 
+  // The file runs index block → stock block → Total. Cut at the first Stock row.
+  //
+  // Total is folded in WITH stock rather than left on screen, deliberately: it
+  // spans index + stock, so showing it above a hidden stock block would give a
+  // column that visibly refuses to add up. Better to hide it than to print a
+  // number the visible rows contradict.
+  const firstStock = report.rows.findIndex(
+    (r) => /stock/i.test(r.label) || /stock/i.test(r.group ?? ""),
+  );
+  const splitAt = firstStock < 0 ? report.rows.length : firstStock;
+  const visibleRows = showStock ? report.rows : report.rows.slice(0, splitAt);
+  const hiddenCount = report.rows.length - splitAt;
+
   return (
     <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "var(--surface-card)" }}>
       {/* header: title + date, and the date picker */}
@@ -1730,7 +1074,7 @@ function ParticipantReport() {
             </tr>
           </thead>
           <tbody style={{ fontFamily: "'DM Mono', monospace" }}>
-            {report.rows.map((row, i) => {
+            {visibleRows.map((row, i) => {
               const net = row.kind === "net";
               return (
                 <tr
@@ -1769,6 +1113,23 @@ function ParticipantReport() {
           </tbody>
         </table>
       </div>
+
+      {hiddenCount > 0 && (
+        <div className="mt-4 pt-3 border-t border-border flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowStock((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
+            style={{ color: INK, background: "var(--surface-inset)" }}
+          >
+            {showStock ? "▴ Hide stock derivatives" : `▾ Show stock derivatives (${hiddenCount} rows)`}
+          </button>
+          <span className="text-xs" style={{ color: MUTED }}>
+            {showStock
+              ? "Stock derivatives and the index+stock Total are shown. Every other view on this site is index-only."
+              : "Index only — matching the rest of the site. The Total row spans index and stock, so it is folded in here too."}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2162,7 +1523,6 @@ function ParticipantDossier() {
   );
 }
 
-
 function ParticipantView({
   asOf,
   onBounds,
@@ -2178,7 +1538,7 @@ function ParticipantView({
   // the full-screen overlay render the SAME ParticipantChart, always in sync.
   const [pvRaw, setPvRaw] = useState<ParticipantsData | null>(null);
 
-  // THE AS-OF WALL. Everything downstream — chart, cycles, strategy — sees only
+  // THE AS-OF WALL. Everything downstream — chart, strategy — sees only
   // history up to the selected date, so the page can be read as it would have
   // looked on that day. Truncating the shared payload once here is what makes
   // that true everywhere at once; a per-component date filter would leave any
@@ -2339,12 +1699,14 @@ function ParticipantView({
   );
   return (
     <div className="space-y-14">
-      {/* ── 1 · Who's long, who's short ── */}
+      {/* ── 1 · Overview ── (titled generically so it does not restate the page
+          headline, which now says "who's long, who's short" itself; the eyebrow
+          below still carries the specifics) */}
       <section id="sec-long-short">
         <SectionHeader
           n={1}
           eyebrow={`Long vs Short balance · ${pvData ? pvData.dateDisplay[pvData.dates.length - 1] : "latest session"}`}
-          title="Who's long, who's short — by participant"
+          title="Overview"
         >
           <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 620 }}>
             Each participant&apos;s open interest normalised to 100% long-vs-short within the chosen
@@ -2414,15 +1776,117 @@ function ParticipantView({
         </div>
       </section>
 
-      {/* ── 3 · Strategies ──
+      {/* ── 3 · Who derived the move ── (driver / absorber on the futures flow) */}
+      <section id="sec-driver" className="pt-12 border-t border-border">
+        <SectionHeader
+          n={3}
+          eyebrow={`Who derived the move · ${DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}`}
+          title="Who drove each day — driver, absorber & conviction"
+        >
+          <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 640 }}>
+            The four net lines are context; the ribbon beneath them names the day&apos;s <em>driver</em> — the
+            biggest one-day change in the chosen instrument that agrees with the NIFTY move. A run of one colour is
+            persistence. Hover to rank every player by today&apos;s Δ, with conviction (Δ vs their own book) and
+            who absorbed it.
+          </p>
+        </SectionHeader>
+        <div className="mt-6">
+          {pvFailed ? (
+            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
+              Live chart data unavailable. Generate it with{" "}
+              <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
+            </div>
+          ) : !pvData ? (
+            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
+              Loading chart…
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "var(--surface-card)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  {dfInstSelector}
+                  {rangeSelector}
+                </div>
+                <button
+                  onClick={() => setDfFull(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{ color: INK, background: "var(--surface-page)" }}
+                >
+                  ⤢ Full screen
+                </button>
+              </div>
+              {pvWindow && (
+                <DriverFuturesChart
+                  data={pvWindow}
+                  hover={dfHover}
+                  setHover={setDfHover}
+                  selection={dfSel}
+                  setSelection={setDfSel}
+                  instrument={dfInst}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* full-screen overlay — SAME DriverFuturesChart + SAME shared state, sized
+          to fit the viewport with no scroll (flex column: header + flex-1 chart). */}
+      {dfFull && pvData && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            margin: 0, // see the note on the §5 overlay — space-y-14 shortens it otherwise
+            background: BG,
+            overflow: "hidden",
+            padding: "16px 24px 18px",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <p className="text-lg font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: INK }}>
+              <em>Who drove each day — {DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}</em>
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              {dfInstSelector}
+              {rangeSelector}
+              <button
+                onClick={() => setDfFull(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
+                style={{ color: INK, background: "var(--surface-card)" }}
+              >
+                ✕ Close (Esc)
+              </button>
+            </div>
+          </div>
+          <div style={{ flex: "1 1 0", minHeight: 0 }}>
+            {pvWindow && (
+              <DriverFuturesChart
+                data={pvWindow}
+                hover={dfHover}
+                setHover={setDfHover}
+                selection={dfSel}
+                setSelection={setDfSel}
+                tall
+                instrument={dfInst}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 4 · Strategies ──
           Its own section, deliberately ABOVE the participant chart. A signal is
           a different kind of object from a chart: nested under the chart's
           controls it read as a caption to the chart rather than a conclusion
           drawn from it. This section grows as strategies are added. */}
       <section id="sec-strategies" className="pt-12 border-t border-border">
         <SectionHeader
-          n={3}
-          eyebrow="Signals & cycles · derived from participant positioning"
+          n={4}
+          eyebrow="Signals · derived from participant positioning"
           title="Signal summary"
         >
           <p className="mt-2 text-sm" style={{ color: "var(--ink-muted)", maxWidth: 640 }}>
@@ -2447,18 +1911,15 @@ function ParticipantView({
               Loading strategies…
             </div>
           ) : (
-            <>
-              <StrategyTeaser data={pvData} onOpen={onOpenStrategies} />
-              <CycleStrip data={pvData} />
-            </>
+            <StrategyTeaser data={pvData} onOpen={onOpenStrategies} />
           )}
         </div>
       </section>
 
-      {/* ── 4 · NIFTY vs All Participants ── (was §4; old §3 removed) */}
+      {/* ── 5 · NIFTY vs All Participants ── */}
       <section id="sec-participants-nifty" className="pt-12 border-t border-border">
         <SectionHeader
-          n={4}
+          n={5}
           eyebrow="NIFTY vs All Participants"
           title="All four participants against NIFTY 50"
         >
@@ -2536,6 +1997,12 @@ function ParticipantView({
             position: "fixed",
             inset: 0,
             zIndex: 100,
+            // MUST stay 0. This overlay is a child of the `space-y-14` wrapper,
+            // which sets margin-top: 3.5rem on every child after the first —
+            // fixed elements included. With top:0 AND bottom:0 the used height
+            // is (viewport − margins), so that margin silently shortened the
+            // overlay by 56px and let the page show through underneath it.
+            margin: 0,
             background: "var(--surface-page)",
             overflow: "hidden",
             padding: "16px 24px 18px",
@@ -2580,108 +2047,7 @@ function ParticipantView({
         </div>
       )}
 
-      {/* ── 4 · Who derived the move ── (driver / absorber on the futures flow) */}
-      <section id="sec-driver" className="pt-12 border-t border-border">
-        <SectionHeader
-          n={5}
-          eyebrow={`Who derived the move · ${DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}`}
-          title="Who drove each day — driver, absorber & conviction"
-        >
-          <p className="mt-2 text-sm" style={{ color: MUTED, maxWidth: 640 }}>
-            The four net lines are context; the ribbon beneath them names the day&apos;s <em>driver</em> — the
-            biggest one-day change in the chosen instrument that agrees with the NIFTY move. A run of one colour is
-            persistence. Hover to rank every player by today&apos;s Δ, with conviction (Δ vs their own book) and
-            who absorbed it.
-          </p>
-        </SectionHeader>
-        <div className="mt-6">
-          {pvFailed ? (
-            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
-              Live chart data unavailable. Generate it with{" "}
-              <code style={{ fontFamily: "'DM Mono', monospace" }}>python plot_fii_vs_nifty.py</code>.
-            </div>
-          ) : !pvData ? (
-            <div className="rounded-2xl border border-border px-7 py-8 text-sm" style={{ background: "var(--surface-card)", color: MUTED }}>
-              Loading chart…
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-border p-5 md:p-7" style={{ background: "var(--surface-card)" }}>
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-                <div className="flex flex-wrap items-center gap-3">
-                  {dfInstSelector}
-                  {rangeSelector}
-                </div>
-                <button
-                  onClick={() => setDfFull(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors"
-                  style={{ color: INK, background: "var(--surface-page)" }}
-                >
-                  ⤢ Full screen
-                </button>
-              </div>
-              {pvWindow && (
-                <DriverFuturesChart
-                  data={pvWindow}
-                  hover={dfHover}
-                  setHover={setDfHover}
-                  selection={dfSel}
-                  setSelection={setDfSel}
-                  instrument={dfInst}
-                />
-              )}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* full-screen overlay — SAME DriverFuturesChart + SAME shared state, sized
-          to fit the viewport with no scroll (flex column: header + flex-1 chart). */}
-      {dfFull && pvData && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100,
-            background: BG,
-            overflow: "hidden",
-            padding: "16px 24px 18px",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div className="flex items-center justify-between mb-3 shrink-0">
-            <p className="text-lg font-semibold" style={{ fontFamily: "'Playfair Display', serif", color: INK }}>
-              <em>Who drove each day — {DF_INSTRUMENTS.find((o) => o.key === dfInst)?.label ?? "Index Futures"}</em>
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              {dfInstSelector}
-              {rangeSelector}
-              <button
-                onClick={() => setDfFull(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ color: INK, background: "var(--surface-card)" }}
-              >
-                ✕ Close (Esc)
-              </button>
-            </div>
-          </div>
-          <div style={{ flex: "1 1 0", minHeight: 0 }}>
-            {pvWindow && (
-              <DriverFuturesChart
-                data={pvWindow}
-                hover={dfHover}
-                setHover={setDfHover}
-                selection={dfSel}
-                setSelection={setDfSel}
-                tall
-                instrument={dfInst}
-              />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── 5 · The dossier — who holds what, and who moved ── */}
+      {/* ── 6 · The dossier — who holds what, and who moved ── */}
       <section id="sec-dossier" className="pt-12 border-t border-border">
         <SectionHeader
           n={6}
@@ -2702,26 +2068,13 @@ function ParticipantView({
 }
 
 // ─── nav ─────────────────────────────────────────────────────────────────────
-// `section` → a real, clickable in-app view (switches the main content).
-// `soon`    → a planned feature (greyed, inert, "Soon" pill).
-const NAV_ITEMS: {
-  label: string;
-  section?: Section;
-  soon?: boolean;
-}[] = [
+// Every entry is a real, clickable view. The "Soon" placeholders that used to
+// sit here are gone, so `section` is required and there is no inert state to
+// style around — a nav item you cannot click is a promise, not a feature.
+const NAV_ITEMS: { label: string; section: Section }[] = [
   { label: "Participant vs Market", section: "participant" },
   { label: "Strategies", section: "strategies" },
   { label: "Weekly Comparison", section: "weekly" },
-  { label: "FII / DII Flows", soon: true },
-  { label: "Option Chain", soon: true },
-  { label: "Delivery Data", soon: true },
-  { label: "Open Interest", section: "oi" },
-];
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: "daily", label: "Daily" },
-  { key: "weekly", label: "Weekly" },
-  { key: "monthly", label: "Monthly" },
 ];
 
 // ─── app ─────────────────────────────────────────────────────────────────────
@@ -2749,32 +2102,7 @@ export default function App() {
     (first: string, last: string) => setBounds((b) => (b && b.first === first && b.last === last ? b : { first, last })),
     [],
   );
-  const [activeTab, setActiveTab] = useState<Tab>("daily");
-  const [data, setData] = useState<BriefData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Load the brief for the selected timeframe. Each tab is its own JSON file,
-  // written by:  python analysis.py --export-dashboard
-  useEffect(() => {
-    let alive = true;
-    setData(null);
-    setError(null);
-
-    // Vite serves frontend/public/ at the site root, so these files live at
-    // /data/*.json. no-store because the daily job rewrites them in place.
-    fetch(`/data/${activeTab}.json`, { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error(`${activeTab}.json — HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: BriefData) => alive && setData(d))
-      .catch((e) => alive && setError(e.message ?? String(e)));
-
-    return () => {
-      alive = false;
-    };
-  }, [activeTab]);
-
+  // One class on <html> flips every --token in theme.css at once.
   // One class on <html> flips every --token in theme.css at once.
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -2823,30 +2151,18 @@ export default function App() {
         <div className="hidden md:flex items-center">
           {NAV_ITEMS.map((item) => {
             const isActive = item.section === section;
-            const clickable = !!item.section;
             return (
               <div
                 key={item.label}
-                onClick={clickable ? () => setSection(item.section!) : undefined}
+                onClick={() => setSection(item.section)}
                 className="flex items-center gap-1.5 px-3 h-14 text-sm border-b-2 transition-colors"
                 style={{
                   color: isActive ? "#FFFFFF" : "rgba(255,255,255,0.35)",
                   borderBottomColor: isActive ? TEAL : "transparent",
-                  cursor: clickable ? "pointer" : "default",
+                  cursor: "pointer",
                 }}
               >
                 {item.label}
-                {item.soon && (
-                  <span
-                    className="text-xs uppercase tracking-wider px-1.5 py-0.5 rounded-full"
-                    style={{
-                      background: "rgba(255,255,255,0.08)",
-                      color: "rgba(255,255,255,0.3)",
-                    }}
-                  >
-                    Soon
-                  </span>
-                )}
               </div>
             );
           })}
@@ -2857,12 +2173,15 @@ export default function App() {
             written, a different day from the trading date). Pinned, it reads the
             date the page is walled to. */}
         <div className="ml-auto shrink-0 hidden sm:block">
+          {/* idleLabel was the brief's file-write stamp; it is now the last
+              trading day the archive actually covers — the more useful
+              freshness claim, and it survives the Open Interest page going. */}
           <AsOfPicker
             asOf={asOf}
             setAsOf={setAsOf}
             bounds={bounds}
             variant="nav"
-            idleLabel={data ? `${data.marketLabel} · Updated ${data.generatedAtDisplay}` : "Pick a date"}
+            idleLabel={bounds ? `NSE F&O · Data to ${fmtISO(bounds.last)}` : "Pick a date"}
           />
         </div>
         </div>
@@ -2876,7 +2195,7 @@ export default function App() {
               className="text-4xl md:text-[2.75rem] leading-[1.18] tracking-tight text-foreground"
               style={{ fontFamily: "'Playfair Display', serif", fontWeight: 400, maxWidth: 1200 }}
             >
-              Everything you need to know before you invest —
+              Who&apos;s long, who&apos;s short in NIFTY —
               <br />
               <em
                 style={{
@@ -2892,7 +2211,7 @@ export default function App() {
               className="mt-4 text-base"
               style={{ color: "var(--ink-muted)", maxWidth: 400 }}
             >
-              NSE participant positioning, refreshed every trading morning.
+              NSE participant open interest in NIFTY futures, calls and puts — every trading morning.
             </p>
           </div>
           {/* The chip answers "which day is this page about?" — a trading DATE,
@@ -2904,7 +2223,7 @@ export default function App() {
               setAsOf={setAsOf}
               bounds={bounds}
               variant="hero"
-              idleLabel={data ? data.asOf.display : "—"}
+              idleLabel={bounds ? fmtISO(bounds.last) : "—"}
             />
           </div>
         </div>
@@ -2928,156 +2247,7 @@ export default function App() {
         {/* Strategies — its own page, reached from the nav or the teaser card */}
         {section === "strategies" && <StrategiesView asOf={asOf} onBounds={onBounds} />}
 
-        {/* Open Interest — the daily/weekly/monthly participant brief */}
-        {section === "oi" && (
-        <>
-        {/* Tab selector + date context */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div
-            className="inline-flex rounded-lg border border-border p-0.5 self-start"
-            style={{ background: "var(--surface-inset)" }}
-          >
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setActiveTab(t.key)}
-                className="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-                style={{
-                  background: activeTab === t.key ? "var(--surface-raised)" : "transparent",
-                  color: activeTab === t.key ? INK : "var(--ink-muted)",
-                  boxShadow:
-                    activeTab === t.key
-                      ? "0 1px 3px rgba(18,21,28,0.08)"
-                      : "none",
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          <div
-            className="text-sm flex items-center gap-2"
-            style={{ fontFamily: "'DM Mono', monospace" }}
-          >
-            {data?.dateA && data?.dateB && (
-              <>
-                <span style={{ color: INK, fontWeight: 500 }}>{data.dateA.display}</span>
-                <span style={{ color: "var(--ink-muted)" }}>vs</span>
-                <span style={{ color: "var(--ink-muted)" }}>{data.dateB.display}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Loading / error / unavailable states */}
-        {error && (
-          <div
-            className="rounded-xl border border-border px-6 py-5"
-            style={{ background: "var(--surface-card)" }}
-          >
-            <p className="text-sm" style={{ color: RED }}>
-              Could not load {error}
-            </p>
-            <p className="text-xs mt-2" style={{ color: "var(--ink-muted)" }}>
-              Generate the data first: <code>python analysis.py --export-dashboard</code>
-            </p>
-          </div>
-        )}
-
-        {!data && !error && (
-          <div
-            className="rounded-xl border border-border px-6 py-5"
-            style={{ background: "var(--surface-card)" }}
-          >
-            <p className="text-sm" style={{ color: "var(--ink-muted)" }}>Loading…</p>
-          </div>
-        )}
-
-        {data && !data.available && (
-          <div
-            className="rounded-xl border border-border px-6 py-5"
-            style={{ background: "var(--surface-card)" }}
-          >
-            <p className="text-xs uppercase tracking-widest mb-2" style={{ color: "var(--ink-muted)" }}>
-              Not available
-            </p>
-            <p className="text-sm" style={{ color: "var(--ink-soft)" }}>{data.reason}</p>
-          </div>
-        )}
-
-        {data && data.available && (
-          <>
-            {/* Headline card */}
-            <div
-              className="rounded-xl border border-border px-6 py-5"
-              style={{ background: "var(--surface-card)" }}
-            >
-              <p
-                className="text-xs uppercase tracking-widest mb-2"
-                style={{ color: "var(--ink-muted)" }}
-              >
-                Biggest Move
-              </p>
-              <p
-                className="text-xl md:text-2xl leading-snug font-semibold"
-                style={{ fontFamily: "'Playfair Display', serif", color: INK }}
-              >
-                <em>{data.headline}</em>
-              </p>
-            </div>
-
-            {/* Muted note chip — only when the backend held an actor back */}
-            {data.note && (
-              <p
-                className="text-xs"
-                style={{ fontFamily: "'DM Mono', monospace", color: "var(--ink-muted)" }}
-              >
-                {data.note}
-              </p>
-            )}
-
-            {/* 2-column layout: actor cards + read panel */}
-            <div className="grid lg:grid-cols-[1fr_288px] gap-5 items-start">
-              {/* Actor cards */}
-              <div className="space-y-4 min-w-0">
-                {data.actors.map((actor) => (
-                  <ActorCard key={actor.name + activeTab} actor={actor} />
-                ))}
-              </div>
-
-              {/* Read panel — sticky on large screens */}
-              <div className="lg:sticky lg:top-[72px]">
-                <ReadPanel data={data} />
-              </div>
-            </div>
-
-            {/* Total strip */}
-            {data.total && (
-              <div
-                className="rounded-xl border border-border px-6 py-4 flex flex-wrap items-center gap-3"
-                style={{ background: "var(--surface-card)" }}
-              >
-                <span
-                  className="text-xs uppercase tracking-widest shrink-0"
-                  style={{ color: "var(--ink-muted)" }}
-                >
-                  Total
-                </span>
-                <span
-                  className="text-sm font-medium"
-                  style={{ fontFamily: "'DM Mono', monospace", color: INK }}
-                >
-                  {data.total.field} {signed(data.total.change)}  ({fmt(data.total.oldVal)} → {fmt(data.total.newVal)})
-                </span>
-              </div>
-            )}
-          </>
-        )}
-        </>
-        )}
-
-        <div className="pb-10" />
+        <div className="pb-10" />        <div className="pb-10" />
       </div>
     </div>
   );

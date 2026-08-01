@@ -19,7 +19,8 @@ import {
   ACTIVATION_DEFAULT,
   MACHINE_HOLD,
   MACHINE_WINDOWS,
-  MACHINE_WINDOW_DEFAULT,
+  recommendedFor,
+  STRATEGY_PARTICIPANT_DEFAULT,
   PV_COLORS,
   runPeakReversal,
   type MachineState,
@@ -30,15 +31,19 @@ const MONO = "'DM Mono', monospace";
 const SANS = "'DM Sans', sans-serif";
 const ACCENT = PV_COLORS.FII;
 
-const STATE: Record<MachineState, { label: string; icon: string; dot: string; tint: string; line: string }> = {
+const STATE: Record<MachineState, { label: string; icon: string; dot: string; tint: string; line: string; verdict: string }> = {
   fired: { label: "Signal", icon: "▲", dot: "var(--status-good)", tint: "var(--status-good-tint)",
-    line: "FII shorts are being covered — the strategy is signalling a long." },
+    line: "FII shorts are being covered — the squeeze the strategy waits for.",
+    verdict: "Go long NIFTY index futures" },
   armed: { label: "Stalling", icon: "◆", dot: "var(--status-warning)", tint: "var(--status-warning-tint)",
-    line: "FII shorts have stopped growing. Watching for the reversal to confirm." },
+    line: "FII shorts have stopped growing. Watching for the reversal to confirm.",
+    verdict: "No action" },
   active: { label: "Building", icon: "▼", dot: "var(--status-info)", tint: "var(--status-info-tint)",
-    line: "FII shorts are still growing near their peak. Not a buy yet." },
+    line: "FII shorts are still growing near their peak. Not a buy yet.",
+    verdict: "No action" },
   idle: { label: "Idle", icon: "•", dot: "var(--ink-muted)", tint: "var(--tint-flat)",
-    line: "FII shorts are well below their peak. No setup forming." },
+    line: "FII shorts are well below their peak. No setup forming.",
+    verdict: "No action" },
 };
 
 export default function StrategyTeaser({
@@ -48,7 +53,8 @@ export default function StrategyTeaser({
   onOpen: () => void;
 }) {
   const book = data.participants?.FII?.futuresShort;
-  const wcfg = MACHINE_WINDOWS.find((w) => w.key === MACHINE_WINDOW_DEFAULT)!;
+  const rec = recommendedFor(STRATEGY_PARTICIPANT_DEFAULT);
+  const wcfg = MACHINE_WINDOWS.find((w) => w.key === rec.default)!;
 
   const r = useMemo(
     () => (book ? runPeakReversal(data.dates, data.nifty, book, wcfg.sessions, ACTIVATION_DEFAULT / 100) : null),
@@ -87,11 +93,22 @@ export default function StrategyTeaser({
           </p>
         </div>
 
-        {/* live state */}
-        <div className="min-w-[168px]">
+        {/* the instruction, not just the state — same wording as the full card */}
+        <div className="min-w-[210px]">
           <p className="text-[9px] uppercase tracking-widest mb-1.5" style={{ color: "var(--ink-muted)" }}>
-            Current status
+            What to do now
           </p>
+          <p className="text-[15px] font-bold leading-tight" style={{ fontFamily: SANS, color: st.dot }}>
+            {st.verdict}
+          </p>
+          {/* the payoff, always visible — most days are quiet days */}
+          {r.state !== "fired" && (
+            <p className="text-[10.5px] mt-0.5 mb-1" style={{ color: "var(--ink-muted)" }}>
+              when it fires ·{" "}
+              <span style={{ color: "var(--status-good)", fontWeight: 600 }}>go long NIFTY futures</span>
+            </p>
+          )}
+          <div className="mb-1.5" />
           <div className="flex items-center gap-2 mb-2">
             <span aria-hidden className="rounded-full shrink-0" style={{ width: 10, height: 10, background: st.dot }} />
             <span className="text-lg font-semibold leading-none" style={{ fontFamily: SANS, color: "var(--ink)" }}>

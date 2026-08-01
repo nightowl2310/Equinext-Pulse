@@ -1,5 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// PeakReversalCard — FII short-book peak reversal, as a self-explaining panel.
+// PeakReversalCard — short-book peak reversal, as a self-explaining panel.
+//
+// Runs against any one participant's gross short index-futures book, selected in
+// the header. FII is the default and the strongest fit; the recommended windows,
+// the accent colour and every caution follow the selection (see
+// MACHINE_RECOMMENDED in lib/series.ts — the strategy does NOT hold for Client).
 //
 // ORDERED TO ANSWER SEVEN QUESTIONS, top to bottom. The vertical order IS the UX:
 //   1 what is this?            header + lead sentence
@@ -79,7 +84,7 @@ const STAGES: {
 }[] = [
   { key: "idle", label: "Idle", icon: "•", dot: "var(--ink-muted)", tint: "var(--tint-flat)",
     sub: "No setup forming",
-    what: "FII shorts are nowhere near their peak. Nothing to track yet." },
+    what: "Shorts are nowhere near their peak. Nothing to track yet." },
   { key: "active", label: "Building", icon: "▼", dot: "var(--status-info)", tint: "var(--status-info-tint)",
     sub: "Shorts still growing",
     what: "Shorts are piling up near the peak. Pressure is still rising — this is not a buy." },
@@ -100,9 +105,11 @@ function narrate(r: MachineResult, threshold: number, winLabel: string, who: str
     case "fired":
       return {
         progress: 100, progressLabel: "signal confirmed",
+        verdict: "Go long NIFTY index futures",
+        verdictSub: `Hold ${MACHINE_HOLD} sessions · enter at the next session's open`,
         why: `${who} shorts peaked at ${fmt(r.runPeak)} contracts and have fallen to ${fmt(book)} — past the ${threshold}% mark. The institutions pressing the market lower are buying back.`,
         waiting: null,
-        action: `Historical basis is a long position in index futures, held ${MACHINE_HOLD} sessions from the next open. Entry is the next session's open — open interest publishes after the close, so today's price cannot be acted on.`,
+        action: "Open interest publishes after the close, so today's price cannot be acted on — the historical basis enters at the next open.",
         actionTone: "good" as const,
       };
     case "armed": {
@@ -110,6 +117,8 @@ function narrate(r: MachineResult, threshold: number, winLabel: string, who: str
       return {
         progress: Math.max(0, Math.min(100, ((r.runPeak - book) / span) * 100)),
         progressLabel: "of the way to a signal",
+        verdict: "No action",
+        verdictSub: "The build has stalled but has not reversed — wait for confirmation",
         why: `Shorts climbed to ${fmt(r.runPeak)} and have stopped setting new highs. That pause is what the strategy watches for — but a pause is not yet a reversal, and shorts can start growing again.`,
         waiting: `Shorts to fall to ${fmt(r.fireLevel)} contracts. If they set a new high first, the peak moves up and this level rises with it.`,
         action: "Nothing yet. This stage exists to stop you buying into a fall that has not turned.",
@@ -120,6 +129,8 @@ function narrate(r: MachineResult, threshold: number, winLabel: string, who: str
       return {
         progress: Math.max(0, Math.min(100, (book / Math.max(1, r.activateLevel)) * 100)),
         progressLabel: "of required build",
+        verdict: "No action",
+        verdictSub: "Shorts are still growing — do not buy into rising pressure",
         why: `Shorts have reached ${fmt(book)}, close to the ${winLabel} high, and are still climbing. Growing shorts mean selling pressure is still increasing.`,
         waiting: "Shorts to stop setting new highs.",
         action: "Nothing yet — deliberately. Buying while shorts are still growing is buying into pressure that is still building.",
@@ -129,6 +140,8 @@ function narrate(r: MachineResult, threshold: number, winLabel: string, who: str
       return {
         progress: Math.max(0, Math.min(100, (book / Math.max(1, r.activateLevel)) * 100)),
         progressLabel: "of required build",
+        verdict: "No action",
+        verdictSub: "No setup is forming",
         why: `${who} shorts sit at ${fmt(book)} contracts — ${r.pctOfPeak?.toFixed(1)}% of the ${winLabel} high of ${fmt(r.trailingPeak)}. Nothing unusual, so there is nothing to track.`,
         waiting: `${who} shorts to grow to ${fmt(r.activateLevel)} contracts (${fmt(r.activateLevel - book)} more).`,
         action: "Nothing to do. Most days sit here — a strategy that stays quiet most of the time is working as intended.",
@@ -173,6 +186,7 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
   const [threshold, setThreshold] = useState(ACTIVATION_DEFAULT);
   const [open, setOpen] = useState(false);
   const [trustOpen, setTrustOpen] = useState(false);
+  const [advOpen, setAdvOpen] = useState(false);
   const popRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -188,7 +202,7 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
 
   const book = data.participants?.[actor]?.futuresShort;
   const wcfg = MACHINE_WINDOWS.find((w) => w.key === win) ?? MACHINE_WINDOWS[4];
-  const isRec = win in rec.windows;
+  const isRec = rec.window != null && win === rec.window;
   const sessions = wcfg.sessions;
 
   const r = useMemo(
@@ -208,41 +222,40 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
   const toneDot = { good: "var(--status-good)", warn: "var(--status-warning)", flat: "var(--ink-muted)" }[n.actionTone];
   const cadence = r.events.length ? Math.round(data.dates.length / r.events.length) : null;
 
+  // How often the participant was STILL net short at the moment of the signal.
+  // Measured here rather than hard-coded, because it differs per participant and
+  // window — and it is the fact that stops "signal" being read as "copy them".
+  const stillShort = useMemo(() => {
+    const longs = data.participants?.[actor]?.futuresLong;
+    const shorts = data.participants?.[actor]?.futuresShort;
+    if (!longs || !shorts) return null;
+    const pos = new Map(data.dates.map((d, i) => [d, i]));
+    let n = 0, of = 0;
+    for (const e of r.events) {
+      const i = pos.get(e.date);
+      if (i == null) continue;
+      const l = longs[i], sh = shorts[i];
+      if (l == null || sh == null) continue;
+      of += 1;
+      if (l - sh < 0) n += 1;
+    }
+    return { n, of };
+  }, [data, actor, r.events]);
+
   return (
     <article className="rounded-2xl border overflow-hidden"
       style={{ background: "var(--surface-card)", borderColor: "var(--border)" }}
-      aria-label="FII short-book peak reversal strategy">
+      aria-label={`${actor} short-book peak reversal strategy`}>
 
       {/* ═══ 1–3 · what it is, what it watches, why it exists ═══ */}
       <div className="px-6 md:px-7 pt-6 pb-5" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2.5 mb-2 flex-wrap">
+            <div className="flex items-center gap-2 mb-1.5">
               <span aria-hidden className="rounded-full" style={{ width: 9, height: 9, background: ACCENT }} />
               <span className="text-[11px] uppercase tracking-[0.2em] font-medium" style={{ color: ACCENT }}>
                 {actor} · Index Futures
               </span>
-              {/* Participant selector. Each pill wears its OWN series colour when
-                  active, so the card's accent and the chart's line always agree. */}
-              <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
-                {STRATEGY_PARTICIPANTS.map((a) => {
-                  const on = a === actor;
-                  return (
-                    <button
-                      key={a}
-                      onClick={() => { setActor(a); setWin(recommendedFor(a).default); }}
-                      title={`${a} — ${PV_ROLE[a] ?? ""}`}
-                      className="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
-                      style={{
-                        background: on ? PV_COLORS[a] : "transparent",
-                        color: on ? "#fff" : "var(--ink-muted)",
-                      }}
-                    >
-                      {a}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h3 className="text-3xl md:text-[2.35rem] leading-tight font-bold"
@@ -365,10 +378,10 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
           <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
             {MACHINE_WINDOWS.map((w) => {
               const on = w.key === win;
-              const good = w.key in rec.windows;
+              const good = w.key === rec.window;
               return (
                 <button key={w.key} onClick={() => setWin(w.key)}
-                  title={rec.windows[w.key] ?? `Not a recommended window for ${actor} — it produces signals, but the results do not hold up across both halves of the sample.`}
+                  title={(w.key === rec.window ? rec.why : "") || `Not the recommended window for ${actor} — it produces signals, but the results do not hold up across both halves of the sample.`}
                   className="relative px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                   style={{
                     background: on ? "var(--surface-raised)" : "transparent",
@@ -392,12 +405,12 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
         </div>
         <p className="text-[11.5px] mt-2 leading-snug" style={{ color: "var(--ink-muted)", maxWidth: 760 }}>
           {isRec ? (
-            <><strong style={{ color: ACCENT }}>{wcfg.label} is recommended for {actor}.</strong> {rec.windows[win]}</>
-          ) : Object.keys(rec.windows).length ? (
+            <><strong style={{ color: ACCENT }}>{wcfg.label} is the recommended window for {actor}.</strong> {rec.why}</>
+          ) : rec.window ? (
             <>
-              <strong style={{ color: "var(--ink-soft)" }}>{wcfg.label} is not recommended for {actor}.</strong>{" "}
-              Its results do not hold up across both halves of the sample.{" "}
-              {Object.keys(rec.windows).join(" and ")} do — they carry a dot.
+              <strong style={{ color: "var(--ink-soft)" }}>{wcfg.label} is not the recommended window for {actor}.</strong>{" "}
+              Its results do not hold up across both halves of the sample — <strong style={{ color: ACCENT }}>{rec.window}</strong>{" "}
+              is the one that does, and it carries the dot.
             </>
           ) : (
             <><strong style={{ color: "var(--ink-soft)" }}>No window is recommended for {actor}.</strong>{" "}
@@ -461,17 +474,58 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
           </div>
 
           {/* what to do */}
-          <div className="px-5 py-3 flex items-start gap-3" style={{ background: toneBg, borderTop: `1px solid var(--border)` }}>
+          <div className="px-5 py-3 flex flex-wrap items-start gap-3" style={{ background: toneBg, borderTop: `1px solid var(--border)` }}>
             <span aria-hidden className="shrink-0 inline-flex items-center justify-center rounded-lg text-[12px] mt-0.5"
               style={{ width: 24, height: 24, background: toneDot, color: "#fff" }}>
               {r.state === "fired" ? "↑" : "—"}
             </span>
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.18em] mb-1 font-semibold" style={{ color: "var(--ink-muted)" }}>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.18em] mb-1.5 font-semibold" style={{ color: "var(--ink-muted)" }}>
                 What to do now
               </p>
-              <p className="text-[13px] leading-relaxed" style={{ color: "var(--ink-soft)" }}>{n.action}</p>
+              {/* The instruction is the point of the card, so it is rendered AS
+                  an instruction — large, coloured by tone, above the reasoning.
+                  It used to be a clause inside a paragraph, which meant the one
+                  thing a reader came for was the one thing they had to hunt. */}
+              <p className="text-[1.6rem] leading-none font-bold" style={{ fontFamily: SANS, color: toneDot, letterSpacing: "-0.01em" }}>
+                {n.verdict}
+              </p>
+              <p className="text-[12.5px] mt-1.5" style={{ color: "var(--ink)" }}>{n.verdictSub}</p>
+              <p className="text-[12.5px] leading-relaxed mt-2" style={{ color: "var(--ink-soft)" }}>{n.action}</p>
+
+              {/* THE MOST MISREADABLE PART OF THE CARD, so it is stated rather
+                  than inferred — but only at full length on a signal day, where
+                  it changes what someone does. On quiet days it would be depth
+                  nobody asked for. */}
+              {r.state === "fired" && (
+                <p className="text-[12.5px] leading-relaxed mt-2 pt-2" style={{ color: "var(--ink-soft)", borderTop: "1px solid var(--border)" }}>
+                  <strong style={{ color: "var(--ink)" }}>The signal is to go long — not to copy {actor}.</strong>{" "}
+                  {stillShort != null && stillShort.of > 0 && (
+                    <>In <strong style={{ color: "var(--ink)" }}>{stillShort.n} of {stillShort.of}</strong> past signals {actor} was
+                    still <em>net short</em> when it fired. </>
+                  )}
+                  Closing a short means buying, so you trade with their <em>buying</em>, not with their view.
+                </p>
+              )}
             </div>
+
+            {/* Standing preview of the payoff. Without it, a reader on a quiet
+                day — which is most days — never learns what the strategy is
+                actually for until the one day it fires. */}
+            {r.state !== "fired" && (
+              <div className="shrink-0 ml-auto rounded-xl px-3.5 py-2.5 min-w-[236px]"
+                style={{ background: "var(--status-good-tint)", border: "1px solid var(--status-good)" }}>
+                <p className="text-[9px] uppercase tracking-[0.18em] mb-1 font-semibold" style={{ color: "var(--ink-muted)" }}>
+                  When this fires
+                </p>
+                <p className="text-[14px] font-bold leading-tight" style={{ fontFamily: SANS, color: "var(--status-good)" }}>
+                  ↑ Go long NIFTY index futures
+                </p>
+                <p className="text-[10.5px] mt-0.5" style={{ color: "var(--ink-soft)" }}>
+                  held {MACHINE_HOLD} sessions from the next open
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -480,8 +534,8 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
       <div className="px-6 md:px-7 pt-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="text-[10px] uppercase tracking-[0.18em] font-semibold" style={{ color: "var(--ink-muted)" }}>
-            Where FII shorts sit today
-            <Info tip="The bar runs from zero to the largest FII short position in the selected reference period. The dashed line is the level a signal fires at." />
+            Where {actor} shorts sit today
+            <Info tip={`The bar runs from zero to the largest ${actor} short position in the selected reference period. The dashed line is the level a signal fires at.`} />
           </span>
           <span className="text-[11px]" style={{ color: "var(--ink-muted)", fontFamily: MONO }}>
             {fmt(r.shortBook)} short · peak {fmt(r.trailingPeak)}
@@ -491,7 +545,7 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
           <div className="absolute top-0 flex flex-col items-center"
             style={{ left: `min(max(${posPct}%, 34px), calc(100% - 34px))`, transform: "translateX(-50%)" }}>
             <span className="rounded-md px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
-              title="Where FII shorts sit today, as a share of their peak"
+              title={`Where ${actor} shorts sit today, as a share of their peak`}
               style={{ background: ACCENT, color: "#fff", fontFamily: MONO }}>{posPct.toFixed(1)}%</span>
           </div>
           <div className="relative rounded-lg overflow-hidden" style={{ height: 40, background: "var(--surface-inset)" }}>
@@ -558,7 +612,7 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
             tip="The lookback used to decide what counts as 'the peak'. Longer windows demand a bigger short position before anything is tracked."
             value={wcfg.label}
             sub={sessions > 10000 ? "entire history to date" : `${sessions} trading sessions`}
-            so={isRec ? `A recommended window for ${actor}.` : `Not a recommended window for ${actor}.`}
+            so={isRec ? `The recommended window for ${actor}.` : `Not the recommended window for ${actor}.`}
             accent="var(--status-info)" tint="var(--status-info-tint)" />
 
           <Kpi icon="⏱" label="Holding period"
@@ -697,6 +751,52 @@ export default function PeakReversalCard({ data }: { data: ParticipantsData }) {
               </div>
               <p className="text-[11px] mt-3 pt-2.5" style={{ color: "var(--ink-muted)", borderTop: "1px solid var(--border)", fontFamily: MONO }}>
                 reproduce · python -m research.experiments.phase5_machine
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Participant switch, deliberately last and folded away. FII is the
+            default and the strongest fit; the others are here for comparison,
+            not because the card wants you to shop between them. Putting this in
+            the header made the choice look like the point of the card. */}
+        <div className="mt-3 rounded-xl overflow-hidden" style={{ background: "var(--surface-subtle)", border: "1px solid var(--border)" }}>
+          <button onClick={() => setAdvOpen((o) => !o)} aria-expanded={advOpen}
+            className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left">
+            <span className="text-[11.5px]" style={{ color: "var(--ink-muted)" }}>
+              Run this on another participant
+              {actor !== STRATEGY_PARTICIPANT_DEFAULT && (
+                <span className="ml-2 px-1.5 py-0.5 rounded-md text-[10px]"
+                  style={{ background: "var(--surface-inset)", color: ACCENT, fontFamily: MONO }}>
+                  {actor}
+                </span>
+              )}
+            </span>
+            <span aria-hidden className="text-[11px] shrink-0" style={{ color: "var(--ink-muted)" }}>
+              {advOpen ? "Hide ▲" : "Change ▼"}
+            </span>
+          </button>
+          {advOpen && (
+            <div className="px-4 pb-3.5" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="inline-flex rounded-lg p-0.5 mt-3" style={{ background: "var(--surface-inset)" }}>
+                {STRATEGY_PARTICIPANTS.map((a) => {
+                  const on = a === actor;
+                  return (
+                    <button key={a}
+                      onClick={() => { setActor(a); setWin(recommendedFor(a).default); }}
+                      title={`${a} — ${PV_ROLE[a] ?? ""}`}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                      style={{ background: on ? PV_COLORS[a] : "transparent", color: on ? "#fff" : "var(--ink-muted)" }}>
+                      {a}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11.5px] leading-snug mt-2.5" style={{ color: "var(--ink-muted)", maxWidth: 620 }}>
+                The strategy is a claim about <strong style={{ color: "var(--ink-soft)" }}>institutional</strong> short
+                books being squeezed. It is strongest on FII, holds on DII, is marginal on Pro, and{" "}
+                <strong style={{ color: "var(--ink-soft)" }}>does not work on Client</strong> — retail shorts are not
+                forced unwinds. Each participant keeps its own recommended windows.
               </p>
             </div>
           )}

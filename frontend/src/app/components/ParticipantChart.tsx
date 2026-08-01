@@ -86,6 +86,10 @@ export function ParticipantChart({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  // Full-screen only: the measured height of the box the SVG may occupy, after
+  // the legend and any readout below it have taken their share.
+  const plotBoxRef = useRef<HTMLDivElement>(null);
+  const [availH, setAvailH] = useState(0);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -97,6 +101,16 @@ export function ParticipantChart({
     setWidth(el.getBoundingClientRect().width);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    const el = plotBoxRef.current;
+    if (!el) return;
+    const measure = () => setAvailH(el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tall, width]);
 
   const view = useMemo(() => {
     const { field, isDelta } = resolveMetric(metric, mode);
@@ -133,13 +147,14 @@ export function ParticipantChart({
   }, [data, mode, metric, range]);
 
   const { idx, fullIdx, series, isDelta, decimated } = view;
-  const dateIndexOf = useMemo(() => {
-    const m = new Map<string, number>();
-    data.dates.forEach((d, i) => m.set(d, i));
-    return m;
-  }, [data.dates]);
-  const niftyH = tall ? NIFTY_H_TALL : NIFTY_H;
-  const mainH = tall ? MAIN_H_TALL : MAIN_H;
+  // Full screen DISTRIBUTES the measured box rather than using a taller fixed
+  // height. The fixed 700px version overflowed any viewport under ~890px — the
+  // overlay clips with overflow:hidden, so the axis and the lowest series were
+  // simply cut off. The panels keep their ~30/70 split, as the constants did.
+  const chromeH = PAD_T + 26 + AXIS_H;
+  const fits = tall && availH > chromeH + 220;
+  const niftyH = fits ? (availH - chromeH) * 0.3 : tall ? NIFTY_H_TALL : NIFTY_H;
+  const mainH = fits ? (availH - chromeH) * 0.7 : tall ? MAIN_H_TALL : MAIN_H;
   const totalH = PAD_T + niftyH + 26 + mainH + AXIS_H;
   const plotW = Math.max(10, width - PAD_L - PAD_R);
 
@@ -264,16 +279,27 @@ export function ParticipantChart({
   const dimOf = (p: string) => (sel && p !== selP ? 0.28 : 1);
   const inBand = (k: number) => bandLo !== null && bandHi !== null && k >= bandLo && k <= bandHi;
 
-  if (width === 0) return <div ref={wrapRef} style={{ width: "100%", height: totalH }} />;
+  if (width === 0)
+    return <div ref={wrapRef} style={{ width: "100%", height: tall ? "100%" : totalH }} />;
 
   const label = metricLabel(metric, mode);
   const bandW = plotW / Math.max(1, idx.length);
   const barW = Math.max(0.6, Math.min(9, bandW / 4 - 0.6));
 
   return (
-    <div ref={wrapRef} style={{ width: "100%", position: "relative" }}>
+    <div
+      ref={wrapRef}
+      style={
+        tall
+          ? { width: "100%", height: "100%", position: "relative", display: "flex", flexDirection: "column" }
+          : { width: "100%", position: "relative" }
+      }
+    >
       {/* legend — top-right, mirrors the reference layout */}
-      <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5 pb-2">
+      <div
+        className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5 pb-2"
+        style={tall ? { flex: "0 0 auto" } : undefined}
+      >
         {PV_PARTICIPANTS.map((p) => (
           <span key={p} className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: "var(--ink-muted)" }}>
             {render === "bar" ? (
@@ -298,6 +324,9 @@ export function ParticipantChart({
         ))}
       </div>
 
+      {/* In full screen this box is what gets measured: it takes whatever the
+          legend and the readout below leave, and the SVG is sized to it. */}
+      <div ref={plotBoxRef} style={tall ? { flex: "1 1 0", minHeight: 0, overflow: "hidden" } : undefined}>
       <svg
         width={width}
         height={totalH}
@@ -318,54 +347,6 @@ export function ParticipantChart({
             pointerEvents="none"
           />
         )}
-
-        {/* ── cycle legs ── accumulation/distribution bands spanning both panels
-            (price strip + participant panel) mark the leg's date range, plus a
-            dashed line at the leg's OI-weighted average NIFTY close — drawn on
-            the price strip, since it is a price, not a contract count — for
-            the currently-measured participant only. Legs are contiguous (each
-            turn ends one leg and starts the next) and there are dozens per
-            participant, so drawing all four participants' legs at once would
-            tile the whole chart; instead this only draws once a participant is
-            picked via the measurement selection, using that participant's own
-            legs. */}
-        {data.cycles && selP && (() => {
-          const legs = data.cycles.legs[selP];
-          if (!legs?.length) return null;
-          return legs.map((leg, li) => {
-            const startRaw = dateIndexOf.get(leg.startDate);
-            const endRaw = dateIndexOf.get(leg.endDate);
-            if (startRaw === undefined || endRaw === undefined || leg.avgPrice === null) return null;
-            const kStart = kOfRaw(startRaw);
-            const kEnd = kOfRaw(endRaw);
-            if (kStart === null || kEnd === null) return null;
-            const x0 = xOf(kStart);
-            const x1 = xOf(kEnd);
-            const fill = leg.type === "accumulation" ? "var(--ink-bull)" : "var(--ink-bear)";
-            return (
-              <g key={`${selP}-cycle-${li}`} pointerEvents="none">
-                <rect
-                  x={Math.min(x0, x1)}
-                  y={PAD_T}
-                  width={Math.max(1, Math.abs(x1 - x0))}
-                  height={niftyH + 26 + mainH}
-                  fill={fill}
-                  opacity={0.09}
-                />
-                <line
-                  x1={x0}
-                  x2={x1}
-                  y1={niftyY(leg.avgPrice)}
-                  y2={niftyY(leg.avgPrice)}
-                  stroke={PV_COLORS[selP]}
-                  strokeWidth="1.4"
-                  strokeDasharray="4 3"
-                  opacity={0.65}
-                />
-              </g>
-            );
-          });
-        })()}
 
         {/* ── NIFTY strip ── */}
         <text x={PAD_L} y={PAD_T - 2} fontSize="10" fill="var(--ink-muted)" fontFamily="'DM Mono', monospace">
@@ -540,6 +521,7 @@ export function ParticipantChart({
           />
         )}
       </svg>
+      </div>
 
       {/* ── measurement readout ──────────────────────────────────────────────
           Driven off `selection` ONLY — never off `hover`, which goes null the

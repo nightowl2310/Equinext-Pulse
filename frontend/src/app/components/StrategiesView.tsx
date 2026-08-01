@@ -16,8 +16,50 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from "react";
-import { sliceParticipantsData, type ParticipantsData } from "../lib/series";
+import {
+  type BookMode,
+  type ChartSelection,
+  type MetricKey,
+  type ParticipantsData,
+  type RangeKey,
+  PV_METRICS,
+  PV_MODES,
+  PV_RANGES,
+  metricLabel,
+  sliceParticipantsData,
+} from "../lib/series";
+import { ParticipantChart, type RenderMode } from "./ParticipantChart";
 import PeakReversalCard from "./PeakReversalCard";
+
+/** Same pill idiom the participant page uses, kept local so this view does not
+ *  reach into App's render helpers. */
+function pillRow<T extends string>(
+  opts: readonly { key: T; label: string }[],
+  active: T,
+  onPick: (k: T) => void,
+) {
+  return (
+    <div
+      className="inline-flex flex-wrap rounded-lg border border-border p-0.5"
+      style={{ background: "var(--surface-inset)" }}
+    >
+      {opts.map((o) => (
+        <button
+          key={o.key}
+          onClick={() => onPick(o.key)}
+          className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+          style={{
+            background: active === o.key ? "var(--surface-raised)" : "transparent",
+            color: active === o.key ? "var(--ink)" : "var(--ink-muted)",
+            boxShadow: active === o.key ? "var(--pill-shadow)" : "none",
+          }}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function StrategiesView({
   asOf,
@@ -28,6 +70,21 @@ export default function StrategiesView({
 }) {
   const [raw, setRaw] = useState<ParticipantsData | null>(null);
   const [failed, setFailed] = useState(false);
+
+  // Reference chart at the foot of the page — collapsed, because it is context
+  // for the strategies above rather than a strategy itself.
+  //
+  // It opens on the SHORT BOOK, not the net: every rule on this page is built on
+  // a participant's gross short leg. The four nets sum to zero by construction,
+  // so a net view would show the identity rather than the quantity the machine
+  // actually watches.
+  const [chartOpen, setChartOpen] = useState(false);
+  const [bookMode, setBookMode] = useState<BookMode>("shortBook");
+  const [metric, setMetric] = useState<MetricKey>("futures");
+  const [range, setRange] = useState<RangeKey>("1Y");
+  const [renderMode, setRenderMode] = useState<RenderMode>("line");
+  const [hover, setHover] = useState<number | null>(null);
+  const [selection, setSelection] = useState<ChartSelection | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -105,7 +162,74 @@ export default function StrategiesView({
             Loading strategies…
           </div>
         ) : (
-          <PeakReversalCard data={data} />
+          <>
+            <PeakReversalCard data={data} />
+
+            {/* ── reference chart, collapsed ── */}
+            <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
+              <button
+                onClick={() => setChartOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-4 px-5 md:px-7 py-4 text-left"
+                aria-expanded={chartOpen}
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold" style={{ color: "var(--ink)" }}>
+                    All four participants against NIFTY 50
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: "var(--ink-muted)" }}>
+                    Reference context for the rules above. Opens on the short book — the leg these
+                    strategies are actually built on.
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs" style={{ color: "var(--ink-muted)", fontFamily: "'DM Mono', monospace" }}>
+                  {chartOpen ? "▴ Hide" : "▾ Show"}
+                </span>
+              </button>
+
+              {chartOpen && (
+                <div className="px-5 md:px-7 pb-6 pt-5 border-t border-border">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {pillRow(PV_MODES, bookMode, setBookMode)}
+                    {pillRow(
+                      [
+                        { key: "line" as RenderMode, label: "Line" },
+                        { key: "bar" as RenderMode, label: "Bar" },
+                      ],
+                      renderMode,
+                      setRenderMode,
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    {pillRow(
+                      PV_METRICS.map((m) => ({ key: m.key, label: metricLabel(m.key, bookMode) })),
+                      metric,
+                      setMetric,
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    {pillRow(PV_RANGES, range, (k) => {
+                      // the hover/selection indices address the OLD window
+                      setRange(k);
+                      setHover(null);
+                    })}
+                  </div>
+                  <div className="mt-5">
+                    <ParticipantChart
+                      data={data}
+                      mode={bookMode}
+                      metric={metric}
+                      range={range}
+                      render={renderMode}
+                      hover={hover}
+                      setHover={setHover}
+                      selection={selection}
+                      setSelection={setSelection}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </section>

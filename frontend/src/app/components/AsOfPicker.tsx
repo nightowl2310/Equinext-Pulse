@@ -118,7 +118,7 @@ export default function AsOfPicker({
             Show data as of
           </p>
           <p className="text-[10.5px] leading-snug mb-2.5" style={{ color: "var(--ink-muted)" }}>
-            The page is truncated to this date. Charts, cycles and strategy state read exactly as they would
+            The page is truncated to this date. Charts and strategy state read exactly as they would
             have on that day — nothing after it is used.
           </p>
           <input
